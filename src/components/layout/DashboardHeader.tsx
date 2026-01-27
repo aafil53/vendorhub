@@ -1,6 +1,8 @@
-import { Bell, Search, ChevronDown } from 'lucide-react';
+import { Bell, Search, ChevronDown, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface DashboardHeaderProps {
   title: string;
@@ -8,6 +10,14 @@ interface DashboardHeaderProps {
 }
 
 export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-6">
       <div>
@@ -34,12 +44,17 @@ export function DashboardHeader({ title, subtitle }: DashboardHeaderProps) {
         </Button>
 
         {/* User Menu */}
-        <Button variant="ghost" className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
-            <span className="text-xs font-semibold text-primary-foreground">JD</span>
+            <span className="text-xs font-semibold text-primary-foreground">
+              {user?.name?.split(' ').map(n => n[0]).join('') || 'U'}
+            </span>
           </div>
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-        </Button>
+          <span className="text-sm font-medium hidden sm:inline">{user?.name}</span>
+          <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout">
+            <LogOut className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </header>
   );
