@@ -61,9 +61,9 @@ export default function Login() {
   const handleDemoLogin = async (role: AppRole) => {
     setIsLoading(true);
     const demoCredentials: Record<AppRole, { email: string; password: string }> = {
-      client: { email: 'client@example.com', password: 'client123' },
-      vendor: { email: 'vendor@example.com', password: 'vendor123' },
-      admin: { email: 'admin@example.com', password: 'admin123' },
+      client: { email: 'client@example.com', password: '123' },
+      vendor: { email: 'vendor1@example.com', password: '123' },
+      admin: { email: 'admin@example.com', password: '123' },
     };
     
     const { email, password } = demoCredentials[role];
@@ -187,7 +187,7 @@ export default function Login() {
                 <p className="font-medium mb-1">Demo Credentials:</p>
                 <p className="text-muted-foreground">
                   Email: {selectedRole}@example.com<br />
-                  Password: {selectedRole}123
+                  Password: 123
                 </p>
               </div>
             </CardContent>

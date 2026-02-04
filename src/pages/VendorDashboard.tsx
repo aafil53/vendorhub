@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { LogOut, FileText, Package, Clock, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { mockRFQs } from '@/data/mockData';
 
 export default function VendorDashboard() {
   const { user, logout } = useAuth();
@@ -16,8 +16,29 @@ export default function VendorDashboard() {
     navigate('/login');
   };
 
-  // Filter RFQs where this vendor was selected
-  const vendorRFQs = mockRFQs.filter(rfq => rfq.selectedVendors.includes('v1'));
+  const [rfqs, setRfqs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [submittingFor, setSubmittingFor] = useState<number | null>(null);
+  const [price, setPrice] = useState('');
+  const [certFile, setCertFile] = useState('');
+
+  const fetchRFQs = async () => {
+    setLoading(true);
+    try {
+      const { data } = await (await import('@/lib/api')).default.get('/rfqs?status=open');
+      // filter for rfqs that include this vendor
+      const myId = user?.id;
+      const myRfqs = data.filter((r: any) => r.vendors && r.vendors.includes(myId));
+      setRfqs(myRfqs);
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  React.useEffect(() => {
+    fetchRFQs();
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -47,7 +68,7 @@ export default function VendorDashboard() {
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{vendorRFQs.filter(r => r.status === 'open').length}</div>
+              <div className="text-2xl font-bold">{rfqs.length}</div>
             </CardContent>
           </Card>
           <Card>
@@ -83,28 +104,44 @@ export default function VendorDashboard() {
         <Card>
           <CardHeader>
             <CardTitle>Incoming RFQs</CardTitle>
-            <CardDescription>Review and submit your bids</CardDescription>
+            <div />
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {vendorRFQs.map((rfq) => (
+              {rfqs.map((rfq) => (
                 <div key={rfq.id} className="flex items-center justify-between p-4 border rounded-lg">
                   <div>
                     <h3 className="font-medium">{rfq.equipmentName}</h3>
-                    <p className="text-sm text-muted-foreground">Qty: {rfq.quantity} | {rfq.specifications}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Deadline: {new Date(rfq.deadline).toLocaleDateString()}
-                    </p>
+                    <p className="text-sm text-muted-foreground">Vendors: {rfq.vendors?.length || 0}</p>
+                    <p className="text-xs text-muted-foreground mt-1">Created: {new Date(rfq.createdAt).toLocaleDateString()}</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge variant={rfq.status === 'open' ? 'default' : 'secondary'}>
                       {rfq.status}
                     </Badge>
-                    <Button size="sm">Submit Bid</Button>
+                    {submittingFor === rfq.id ? (
+                      <div className="flex items-center gap-2">
+                        <Input value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price" className="w-28" />
+                        <Input value={certFile} onChange={(e) => setCertFile(e.target.value)} placeholder="Cert URL" className="w-52" />
+                        <Button size="sm" onClick={async () => {
+                          try {
+                            const p = parseFloat(price);
+                            if (isNaN(p)) return;
+                            await (await import('@/lib/api')).default.post('/bids/submit', { rfqId: rfq.id, price: p, certFile, availability: 'Immediate' });
+                            setSubmittingFor(null);
+                            setPrice(''); setCertFile('');
+                            fetchRFQs();
+                          } catch (err) { console.error(err); }
+                        }}>Send</Button>
+                        <Button size="sm" variant="outline" onClick={() => setSubmittingFor(null)}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" onClick={() => setSubmittingFor(rfq.id)}>Submit Bid</Button>
+                    )}
                   </div>
                 </div>
               ))}
-              {vendorRFQs.length === 0 && (
+              {rfqs.length === 0 && (
                 <p className="text-center text-muted-foreground py-8">No RFQs available</p>
               )}
             </div>

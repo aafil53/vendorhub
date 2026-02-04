@@ -1,29 +1,35 @@
 import { useState } from 'react';
 import { Star, Mail, Phone, Check, Send } from 'lucide-react';
-import { Equipment, Vendor } from '@/types/vendor';
-import { mockVendors } from '@/data/mockData';
+import { Equipment } from '@/types/vendor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import { useQuery } from '@tanstack/react-query';
+import api from '@/lib/api';
+import { toast } from 'sonner';
 
 interface VendorSelectionProps {
   equipment: Equipment;
-  onSendRFQ: (vendorIds: string[]) => void;
+  onSendRFQ: (vendorIds: number[]) => void;
   onBack: () => void;
 }
 
 export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectionProps) {
-  const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
+  const [selectedVendors, setSelectedVendors] = useState<number[]>([]);
 
-  // Filter vendors by equipment category and certification
-  const eligibleVendors = mockVendors.filter(
-    v => v.equipmentCategories.includes(equipment.category) && 
-         v.certifications.includes(equipment.certificationRequired)
-  );
+  const { data: vendors = [], isLoading } = useQuery({
+    queryKey: ['vendors'],
+    queryFn: async () => {
+      const { data } = await api.get('/users?role=vendor');
+      return data;
+    }
+  });
 
-  const toggleVendor = (vendorId: string) => {
+  const eligibleVendors = vendors; // Optionally filter by category/cert if needed
+
+  const toggleVendor = (vendorId: number) => {
     setSelectedVendors(prev => 
       prev.includes(vendorId) 
         ? prev.filter(id => id !== vendorId)
@@ -40,6 +46,18 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
     }
   };
 
+  const handleSend = async () => {
+    if (selectedVendors.length === 0) return;
+    try {
+      await api.post('/rfq/create', { equipmentId: equipment.id, vendorIds: selectedVendors, quantity: 1 });
+      toast.success('RFQ created and sent to selected vendors');
+      onSendRFQ(selectedVendors);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to create RFQ');
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Equipment Summary */}
@@ -48,7 +66,7 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-lg">Request for Quotation</CardTitle>
-              <CardDescription>Select vendors to send RFQ for equipment shortage</CardDescription>
+              <CardDescription>Select vendors to send RFQ for equipment</CardDescription>
             </div>
             <Button variant="outline" onClick={onBack}>
               ← Back to Equipment
@@ -63,16 +81,16 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Quantity Needed</p>
-              <p className="font-semibold text-warning">{equipment.shortage} units</p>
+              <p className="font-semibold text-warning">1 unit</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Specifications</p>
-              <p className="font-semibold">{equipment.specifications}</p>
+              <p className="font-semibold">{typeof equipment.specs === 'object' ? JSON.stringify(equipment.specs) : equipment.specs}</p>
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Required Certification</p>
-              <Badge variant={getCertificationColor(equipment.certificationRequired) as any}>
-                {equipment.certificationRequired}
+              <Badge variant={getCertificationColor(equipment.certReq ? 'ARAMCO' : 'None') as any}>
+                {equipment.certReq ? 'Required' : 'Not required'}
               </Badge>
             </div>
           </div>
@@ -87,7 +105,7 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
               Eligible Vendors ({eligibleVendors.length})
             </CardTitle>
             <Button 
-              onClick={() => onSendRFQ(selectedVendors)}
+              onClick={handleSend}
               disabled={selectedVendors.length === 0}
               className="gap-2"
             >
@@ -98,7 +116,7 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {eligibleVendors.map((vendor) => (
+            {eligibleVendors.map((vendor: any) => (
               <div
                 key={vendor.id}
                 className={cn(
@@ -116,7 +134,7 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
                 
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
                   <span className="text-lg font-semibold text-primary">
-                    {vendor.name.split(' ').map(n => n[0]).join('')}
+                    {vendor.name?.split(' ').map((n: string) => n[0]).join('')}
                   </span>
                 </div>
 
@@ -125,10 +143,10 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
                     <p className="font-semibold text-foreground">{vendor.name}</p>
                     <div className="flex items-center gap-1 text-warning">
                       <Star className="h-4 w-4 fill-warning" />
-                      <span className="text-sm font-medium">{vendor.rating}</span>
+                      <span className="text-sm font-medium">{vendor.rating || '4.5'}</span>
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">{vendor.company}</p>
+                  <p className="text-sm text-muted-foreground">{vendor.company || vendor.email}</p>
                   <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Mail className="h-3 w-3" />
@@ -136,20 +154,19 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
                     </span>
                     <span className="flex items-center gap-1">
                       <Phone className="h-3 w-3" />
-                      {vendor.phone}
+                      {vendor.phone || '—'}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex flex-col items-end gap-2">
                   <div className="flex gap-1">
-                    {vendor.certifications.map(cert => (
-                      <Badge key={cert} variant={getCertificationColor(cert) as any} className="text-xs">
-                        {cert}
-                      </Badge>
-                    ))}
+                    {/* certifications placeholder */}
+                    <Badge variant={'default' as any} className="text-xs">
+                      Verified
+                    </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground">{vendor.completedOrders} orders completed</p>
+                  <p className="text-sm text-muted-foreground">{vendor.completedOrders || 0} orders</p>
                 </div>
 
                 {selectedVendors.includes(vendor.id) && (

@@ -4,11 +4,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { mockVendors } from '@/data/mockData';
+import { AdminBids } from '@/components/admin/AdminBids';
+import { useEffect, useState } from 'react';
+import api from '@/lib/api';
 
 export default function AdminDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [vendors, setVendors] = useState<any[]>([]);
+
+  useEffect(() => {
+    api.get('/users?role=vendor').then(res => setVendors(res.data)).catch(() => setVendors([]));
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -53,7 +60,7 @@ export default function AdminDashboard() {
               <Shield className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{mockVendors.length}</div>
+              <div className="text-2xl font-bold">{vendors.length}</div>
               <p className="text-xs text-muted-foreground">2 pending approval</p>
             </CardContent>
           </Card>
@@ -114,6 +121,7 @@ export default function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
+                {/* Placeholder - expand later */}
                 {[
                   { company: 'New Equipment Co.', contact: 'Ali Hassan', status: 'pending' },
                   { company: 'Desert Machinery LLC', contact: 'Omar Said', status: 'pending' },
@@ -130,6 +138,17 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Bids to Review */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Open RFQs & Bids</CardTitle>
+              <CardDescription>Review bids and approve vendors</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AdminBids />
             </CardContent>
           </Card>
         </div>
