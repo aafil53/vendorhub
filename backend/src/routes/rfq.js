@@ -21,13 +21,46 @@ router.post('/create', authMiddleware, requireRole(['client']), async (req, res)
 });
 
 // GET /api/rfqs?status=open
-router.get('/rfqs', async (req, res) => {
+router.get('/rfqs', authMiddleware, async (req, res) => {
   try {
     const status = req.query.status;
     const where = {};
     if (status) where.status = status;
+
+    // Filter by role
+    if (req.user.role === 'client') {
+      where.clientId = req.user.id;
+    }
+    // For vendors, usually check if they are in the target list (simplified here to show Open RFQs)
+    else if (req.user.role === 'vendor') {
+      where.status = 'open';
+      // In a real app, check if req.user.id is in r.vendors array
+    }
+
     const rfqs = await RFQ.findAll({ where, order: [['createdAt', 'DESC']] });
-    const result = await Promise.all(rfqs.map(async (r) => {
+
+    // Post-filter for vendors if needed (JSON query in SQLite is tricky, doing in JS for safety)
+    let visibleRfqs = rfqs;
+    if (req.user.role === 'vendor') {
+      visibleRfqs = rfqs.filter(r => {
+        // If vendors list is empty/null, maybe it's public? Assuming private for now.
+        // If vendors is stored as [1, 2], check inclusion.
+        if (!r.vendors) return false;
+        // Handle both stringified JSON or actual array depending on DB adapter
+        let vList = r.vendors;
+        if (typeof vList === 'string') {
+          try { vList = JSON.parse(vList); } catch (e) { vList = []; }
+        }
+        if (Array.isArray(vList)) {
+          // Check if vendor ID is in the list
+          // Ensure comparison matches types (string vs number)
+          return vList.map(String).includes(String(req.user.id));
+        }
+        return false;
+      });
+    }
+
+    const result = await Promise.all(visibleRfqs.map(async (r) => {
       const equipment = await Equipment.findByPk(r.equipmentId);
       const client = await User.findByPk(r.clientId);
       const bidsRaw = await Bid.findAll({ where: { rfqId: r.id } });

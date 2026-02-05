@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { Bid, RFQ, User } = require('../models');
+const { Bid, RFQ, User, Equipment } = require('../models');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
 // Create a bid (vendor only) - POST /api/bid/submit
@@ -37,6 +37,35 @@ router.get('/rfq/:rfqId', async (req, res) => {
       };
     }));
     res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/bids/admin - List all bids for admin
+router.get('/admin', authMiddleware, requireRole(['admin']), async (req, res) => {
+  try {
+    const bids = await Bid.findAll({
+      include: [
+        { model: RFQ, as: 'rfq', include: [{ model: Equipment, as: 'equipment' }] },
+        { model: User, as: 'vendor', attributes: ['name', 'email'] }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+
+    const formattedBids = bids.map(b => ({
+      id: b.id,
+      vendorName: b.vendor?.name || b.vendor?.email,
+      price: b.price,
+      certFile: b.certFile,
+      availability: b.availability,
+      equipmentName: b.rfq?.equipment?.name || 'Unknown',
+      status: b.status,
+      createdAt: b.createdAt
+    }));
+
+    res.json(formattedBids);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

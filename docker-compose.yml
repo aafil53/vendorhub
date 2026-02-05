@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "5000:5000"
+    environment:
+      - DB_DIALECT=sqlite
+      - DB_STORAGE=/app/data/vendorhub_prod.sqlite
+      - JWT_SECRET=production_secret_key_change_this
+    volumes:
+      - ./backend/data:/app/data
+    networks:
+      - vendorhub-net
+
+  frontend:
+    build: .
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - vendorhub-net
+
+networks:
+  vendorhub-net:
+    driver: bridge

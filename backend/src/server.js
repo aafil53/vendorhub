@@ -25,6 +25,7 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/bids', require('./routes/bids'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/equipments', require('./routes/equipments'));
+app.use('/api/orders', require('./routes/orders'));
 
 app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 

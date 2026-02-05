@@ -22,6 +22,7 @@ const navItems: NavItem[] = [
   { icon: Package, label: 'Equipment', path: 'equipment', badge: 4 },
   { icon: Users, label: 'Vendors', path: 'vendors' },
   { icon: FileText, label: 'RFQ & Bids', path: 'rfq', badge: 12 },
+  { icon: Package, label: 'Purchase Orders', path: 'orders' },
   { icon: BarChart3, label: 'Reports', path: 'reports' },
   { icon: Settings, label: 'Settings', path: 'settings' },
 ];
