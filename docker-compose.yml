@@ -6,11 +6,16 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - DB_DIALECT=sqlite
-      - DB_STORAGE=/app/data/vendorhub_prod.sqlite
-      - JWT_SECRET=production_secret_key_change_this
+      - DB_DIALECT=mysql
+      - DB_HOST=mysql
+      - DB_NAME=vendorhub
+      - DB_USER=root
+      - DB_PASS=rootpassword
+      - JWT_SECRET=supersecret
     volumes:
       - ./backend/data:/app/data
+    depends_on:
+      - mysql
     networks:
       - vendorhub-net
 
@@ -23,6 +28,37 @@ services:
     networks:
       - vendorhub-net
 
+  mysql:
+    image: mysql:8.0
+    container_name: vendorhub-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: vendorhub
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - vendorhub-net
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: vendorhub-phpmyadmin
+    restart: always
+    environment:
+      PMA_HOST: mysql
+      MYSQL_ROOT_PASSWORD: rootpassword
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+    networks:
+      - vendorhub-net
+
 networks:
   vendorhub-net:
     driver: bridge
+
+volumes:
+  mysql_data:

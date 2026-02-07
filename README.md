@@ -26,7 +26,7 @@ cd vendorhub
 ```
 
 ### 3. Backend Setup
-The backend uses **SQLite** by default for local development (zero-config).
+The backend is currently configured to use **MySQL** with Docker.
 
 ```bash
 # Open a new terminal for the backend
@@ -38,8 +38,23 @@ npm install
 # Setup environment variables (Windows)
 copy .env.example .env
 # OR for Mac/Linux: cp .env.example .env
+```
 
-# Seed the database (creates local 'vendorhub.sqlite' with test data)
+**Start Docker Services (MySQL + phpMyAdmin):**
+```bash
+# From project root, start MySQL and phpMyAdmin containers
+cd ..
+docker-compose up -d mysql phpmyadmin
+```
+-   **MySQL**: `localhost:3307`
+-   **phpMyAdmin**: `http://localhost:8080` (Login: `root` / `rootpassword`)
+
+**Populate Database:**
+```bash
+# Back to backend directory
+cd backend
+
+# Seed the database with test data
 npm run seed
 
 # Start the server (runs on port 5000)
@@ -61,6 +76,48 @@ npm run dev
 
 ### 5. Access the App
 Open your browser to: **http://localhost:5173**
+
+## Database Setup 🗄️
+
+### Current Setup: MySQL with Docker (Active)
+The project is currently configured to use **MySQL** running in Docker containers.
+
+**Access phpMyAdmin for visual database management:**
+-   URL: [http://localhost:8080](http://localhost:8080)
+-   Username: `root`
+-   Password: `rootpassword`
+-   Database: `vendorhub`
+
+**Configuration Details:**
+-   **MySQL Port**: `3307` (Docker container)
+-   **Tables**: Users, Equipment, RFQs, Bids, Orders, SequelizeMeta
+-   **Test Data**: 5 equipment items, 3 vendors, 1 client, 1 admin
+
+### Alternative: Switch to SQLite
+If you prefer a simpler, file-based database for local development:
+
+#### 1. Update Configuration
+Edit `backend/.env`:
+```properties
+DB_DIALECT=sqlite
+DB_STORAGE=./vendorhub.sqlite
+
+# Comment out MySQL settings:
+# DB_DIALECT=mysql
+# DB_HOST=localhost
+# DB_PORT=3307
+# DB_USER=root
+# DB_PASS=rootpassword
+```
+
+#### 2. Seed SQLite Database
+```bash
+cd backend
+npm run seed
+```
+
+#### 3. Restart Backend
+The app will now use the SQLite file (`backend/vendorhub.sqlite`) instead of MySQL.
 
 ## Docker Deployment (Production-Ready) 🐳
 
@@ -113,4 +170,5 @@ Login with these pre-seeded accounts to test different roles:
 
 ## Tech Stack
 -   **Frontend**: React, Vite, TypeScript, Tailwind CSS, Shadcn UI, React Query.
--   **Backend**: Node.js, Express, Sequelize, SQLite (Dev) / MySQL (Prod).
+-   **Backend**: Node.js, Express, Sequelize, MySQL (Production) / SQLite (Alternative).
+-   **DevOps**: Docker, Docker Compose, phpMyAdmin.
