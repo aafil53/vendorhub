@@ -61,7 +61,10 @@ copy .env.example .env
 ---
 
 ## Step 3: Database Setup (The Storage)
-We use **MySQL** running inside a "Docker container." This keeps the database separate from your system files.
+We use **MySQL** running inside a "Docker container." This keeps the database separate from your system files and ensures everyone on the team has the exact same environment.
+
+> [!IMPORTANT]
+> **Team Consistency**: To ensure you have the same database as your teammates, you MUST run the seeding command after starting Docker. This populates your local MySQL with the shared test data.
 
 1.  **Start Docker Desktop** on your computer.
 2.  Go back to the **main project folder** (`vendorhub/`) in your terminal.
@@ -71,8 +74,10 @@ We use **MySQL** running inside a "Docker container." This keeps the database se
     docker compose up -d mysql phpmyadmin
     ```
     *(This starts MySQL on port 3307 and phpMyAdmin on port 8080)*
-4.  **Populate the data**: Go back into the `backend/` folder and run:
+
+4.  **Populate the data (CRITICAL)**: Go into the `backend/` folder and run:
     ```bash
+    # This ensures your database matches the team's data
     npm run seed
     ```
 5.  **Start the Backend**:
