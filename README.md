@@ -1,174 +1,133 @@
-# VendorHub Management System
+# 🚚 VendorHub Management System Setup Guide
 
-A full-stack vendor management system built with **React (+Vite, TypeScript)** and **Node.js (+Express, SQLite/MySQL)**.
+Welcome to the **VendorHub Management System**! This guide is designed to help you get the project running on your local machine as quickly and easily as possible, even if you are a beginner.
 
-## Project Structure
+---
 
-```
-vendorhub/
-├── src/                # Frontend (React + Vite)
-├── backend/            # Backend (Express + Sequelize)
-└── README.md           # This file
-```
+## 📋 Table of Contents
+1. [Prerequisites](#1-prerequisites)
+2. [Step 1: Clone the Project](#step-1-clone-the-project)
+3. [Step 2: Backend Setup (The Engine)](#step-2-backend-setup-the-engine)
+4. [Step 3: Database Setup (The Storage)](#step-3-database-setup-the-storage)
+5. [Step 4: Frontend Setup (The Interface)](#step-4-frontend-setup-the-interface)
+6. [Step 5: Access the App](#step-5-access-the-app)
+7. [🔑 Test Credentials](#-test-credentials)
+8. [🛠️ Troubleshooting](#️-troubleshooting)
 
-## Quick Start (Copy-Paste) 🚀
+---
 
-Follow these steps to set up the project locally.
+## 1. Prerequisites
+Before you start, make sure you have these 3 tools installed on your computer:
 
-### 1. Prerequisites
-- **Node.js** (v18+ recommended)
-- **Git**
+1.  **Node.js (v18 or higher)**: [Download here](https://nodejs.org/)
+2.  **Git**: [Download here](https://git-scm.com/)
+3.  **Docker Desktop** (Required for MySQL): [Download here](https://www.docker.com/products/docker-desktop/)
 
-### 2. Clone the Repository
+> [!TIP]
+> After installing, shared your computer once to ensure everything is set up correctly.
+
+---
+
+## Step 1: Clone the Project
+Open your terminal (Command Prompt, PowerShell, or Git Bash) and run these commands:
+
 ```bash
+# 1. Download the code
 git clone <repository-url>
+
+# 2. Go into the project folder
 cd vendorhub
 ```
 
-### 3. Backend Setup
-The backend is currently configured to use **MySQL** with Docker.
+---
+
+## Step 2: Backend Setup (The Engine)
+The backend handles the data and logic.
 
 ```bash
-# Open a new terminal for the backend
+# 1. Enter the backend folder
 cd backend
 
-# Install dependencies
+# 2. Install the necessary packages
 npm install
 
-# Setup environment variables (Windows)
+# 3. Create your environment file (Windows)
 copy .env.example .env
-# OR for Mac/Linux: cp .env.example .env
+
+# OR for Mac/Linux:
+# cp .env.example .env
 ```
 
-**Start Docker Services (MySQL + phpMyAdmin):**
+---
+
+## Step 3: Database Setup (The Storage)
+We use **MySQL** running inside a "Docker container." This keeps the database separate from your system files.
+
+1.  **Start Docker Desktop** on your computer.
+2.  Go back to the **main project folder** (`vendorhub/`) in your terminal.
+3.  Run this command to start the database:
+    ```bash
+    docker-compose up -d mysql phpmyadmin
+    ```
+4.  **Populate the data**: Go back into the `backend/` folder and run:
+    ```bash
+    npm run seed
+    ```
+5.  **Start the Backend**:
+    ```bash
+    npm run dev
+    ```
+    *(Keep this terminal open!)*
+
+---
+
+## Step 4: Frontend Setup (The Interface)
+Open a **NEW** terminal window so the backend terminal keeps running.
+
 ```bash
-# From project root, start MySQL and phpMyAdmin containers
-cd ..
-docker-compose up -d mysql phpmyadmin
-```
--   **MySQL**: `localhost:3307`
--   **phpMyAdmin**: `http://localhost:8080` (Login: `root` / `rootpassword`)
-
-**Populate Database:**
-```bash
-# Back to backend directory
-cd backend
-
-# Seed the database with test data
-npm run seed
-
-# Start the server (runs on port 5000)
-npm run dev
-```
-> **Note:** The backend must be running for the frontend to work.
-
-### 4. Frontend Setup
-```bash
-# Open a NEW terminal in the project root (vendorhub/)
-cd vendorhub
-
-# Install dependencies
+# 1. Make sure you are in the 'vendorhub' folder
+# 2. Install the packages
 npm install
 
-# Start the frontend (runs on port 5173)
+# 3. Create the frontend environment file (Windows)
+copy .env.example .env
+
+# 4. Start the website
 npm run dev
 ```
 
-### 5. Access the App
-Open your browser to: **http://localhost:5173**
+---
 
-## Database Setup 🗄️
+## Step 5: Access the App
+Once everything is running:
+-   **Website**: [http://localhost:5173](http://localhost:5173)
+-   **Database Manager (phpMyAdmin)**: [http://localhost:8080](http://localhost:8080)
+    -   *User: `root` | Pass: `rootpassword`*
 
-### Current Setup: MySQL with Docker (Active)
-The project is currently configured to use **MySQL** running in Docker containers.
+---
 
-**Access phpMyAdmin for visual database management:**
--   URL: [http://localhost:8080](http://localhost:8080)
--   Username: `root`
--   Password: `rootpassword`
--   Database: `vendorhub`
-
-**Configuration Details:**
--   **MySQL Port**: `3307` (Docker container)
--   **Tables**: Users, Equipment, RFQs, Bids, Orders, SequelizeMeta
--   **Test Data**: 5 equipment items, 3 vendors, 1 client, 1 admin
-
-### Alternative: Switch to SQLite
-If you prefer a simpler, file-based database for local development:
-
-#### 1. Update Configuration
-Edit `backend/.env`:
-```properties
-DB_DIALECT=sqlite
-DB_STORAGE=./vendorhub.sqlite
-
-# Comment out MySQL settings:
-# DB_DIALECT=mysql
-# DB_HOST=localhost
-# DB_PORT=3307
-# DB_USER=root
-# DB_PASS=rootpassword
-```
-
-#### 2. Seed SQLite Database
-```bash
-cd backend
-npm run seed
-```
-
-#### 3. Restart Backend
-The app will now use the SQLite file (`backend/vendorhub.sqlite`) instead of MySQL.
-
-## Docker Deployment (Production-Ready) 🐳
-
-To run the full stack (Frontend + Backend + Nginx) with a single command:
-
-1.  **Start Services**:
-    ```bash
-    docker-compose up --build
-    ```
-2.  **Access App**:
-    Open **http://localhost** (runs on port 80 via Nginx).
-
-> **Note**: The backend works automatically within the Docker network. The database is persistent in `backend/data`.
-
-## Test Credentials
-
-Login with these pre-seeded accounts to test different roles:
+## 🔑 Test Credentials
+Use these accounts to sign in and test the system:
 
 | Role | Email | Password |
 |------|-------|----------|
-|-------------|----------|
+| **Admin** | `admin@example.com` | `123` |
 | **Client** | `client@example.com` | `123` |
 | **Vendor** | `vendor1@example.com` | `123` |
-| **Admin** | `admin@example.com` | `123` |
 
-## Key Features & Testing Flow
+---
 
-1.  **Client Portal**:
-    -   Login as **Client**.
-    -   Go to **Equipment Inventory** -> Check Vendors -> Send RFQ.
-    -   Go to **RFQ & Bids** -> Compare Bids -> **Create Purchase Order**.
-    -   View **Purchase Orders** history.
+## 🛠️ Troubleshooting
 
-2.  **Vendor Portal**:
-    -   Login as **Vendor**.
-    -   Go to **Incoming Requests** (was "Active RFQs").
-    -   Click **Submit Bid**. Enter Price ($500) and Availability (Immediate).
-    -   *Note: You can view the RFQs you've been invited to.*
+-   **"Command not found: npm"**: You need to install [Node.js](https://nodejs.org/).
+-   **"Docker not running"**: Open Docker Desktop and wait for the little whale icon to turn green.
+-   **"Database connection error"**: Make sure you ran `docker-compose up -d` in Step 3.
+-   **"Port 5000 already in use"**: Close any other terminal where the backend might be running.
 
-3.  **Admin Portal**:
-    -   Login as **Admin**.
-    -   View **Admin Dashboard**. All active bids are listed.
-    -   Click **Approve** on a bid. This marks the bid as accepted and the RFQ as awarded.
+---
 
-## Troubleshooting
-
--   **"ECONNREFUSED"**: Ensure the backend server is running on port 5000.
--   **"401 Unauthorized"**: If you just restarted the backend or changed `.env`, **Log Out** and Log In again to refresh your token.
--   **Database Issues**: Run `npm run seed` in the `backend/` folder to reset the database.
-
-## Tech Stack
--   **Frontend**: React, Vite, TypeScript, Tailwind CSS, Shadcn UI, React Query.
--   **Backend**: Node.js, Express, Sequelize, MySQL (Production) / SQLite (Alternative).
--   **DevOps**: Docker, Docker Compose, phpMyAdmin.
+## 💡 Developer Cheat Sheet
+Common commands you might need:
+-   `npm run dev`: Starts the project.
+-   `npm run seed`: Resets the database with fresh test data.
+-   `docker-compose stop`: Stops the database to save computer memory.
