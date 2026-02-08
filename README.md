@@ -67,8 +67,10 @@ We use **MySQL** running inside a "Docker container." This keeps the database se
 2.  Go back to the **main project folder** (`vendorhub/`) in your terminal.
 3.  Run this command to start the database:
     ```bash
-    docker-compose up -d mysql phpmyadmin
+    # Ensure Docker Desktop is open first!
+    docker compose up -d mysql phpmyadmin
     ```
+    *(This starts MySQL on port 3307 and phpMyAdmin on port 8080)*
 4.  **Populate the data**: Go back into the `backend/` folder and run:
     ```bash
     npm run seed
@@ -121,7 +123,11 @@ Use these accounts to sign in and test the system:
 
 -   **"Command not found: npm"**: You need to install [Node.js](https://nodejs.org/).
 -   **"Docker not running"**: Open Docker Desktop and wait for the little whale icon to turn green.
--   **"Database connection error"**: Make sure you ran `docker-compose up -d` in Step 3.
+-   **"Database connection error"**: 
+    1. Make sure Docker Desktop is running.
+    2. Run `docker compose up -d mysql` in the main folder.
+    3. Check if the container is running with `docker ps`.
+    4. If it still fails, try changing `DB_HOST=localhost` to `DB_HOST=127.0.0.1` in `backend/.env`.
 -   **"Port 5000 already in use"**: Close any other terminal where the backend might be running.
 
 ---
