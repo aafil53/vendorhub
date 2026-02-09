@@ -21,7 +21,7 @@ Before you start, make sure you have these 3 tools installed on your computer:
 
 1.  **Node.js (v18 or higher)**: [Download here](https://nodejs.org/)
 2.  **Git**: [Download here](https://git-scm.com/)
-3.  **Docker Desktop** (Required for MySQL): [Download here](https://www.docker.com/products/docker-desktop/)
+3.  **MySQL Server & Workbench**: [Download here](https://dev.mysql.com/downloads/installer/)
 
 > [!TIP]
 > After installing, shared your computer once to ensure everything is set up correctly.
@@ -61,20 +61,17 @@ copy .env.example .env
 ---
 
 ## Step 3: Database Setup (The Storage)
-We use **MySQL** running inside a "Docker container." This keeps the database separate from your system files and ensures everyone on the team has the exact same environment.
+We use a **local MySQL** installation.
 
 > [!IMPORTANT]
-> **Team Consistency**: To ensure you have the same database as your teammates, you MUST run the seeding command after starting Docker. This populates your local MySQL with the shared test data.
+> **Database Creation**: Before running the backend, you must create a database named `vendorhub` in your MySQL instance (use MySQL Workbench or the command line).
 
-1.  **Start Docker Desktop** on your computer.
-2.  Go back to the **main project folder** (`vendorhub/`) in your terminal.
-3.  Run this command to start the database:
-    ```bash
-    # Ensure Docker Desktop is open first!
-    docker compose up -d mysql phpmyadmin
+1.  **Install MySQL**: Ensure MySQL Server is running on your machine.
+2.  **Create Database**:
+    ```sql
+    CREATE DATABASE vendorhub;
     ```
-    *(This starts MySQL on port 3307 and phpMyAdmin on port 8080)*
-
+3.  **Update Configuration**: Open `backend/.env` and set your `DB_PASSWORD` to your local MySQL root password.
 4.  **Populate the data (CRITICAL)**: Go into the `backend/` folder and run:
     ```bash
     # This ensures your database matches the team's data
@@ -108,8 +105,7 @@ npm run dev
 ## Step 5: Access the App
 Once everything is running:
 -   **Website**: [http://localhost:5173](http://localhost:5173)
--   **Database Manager (phpMyAdmin)**: [http://localhost:8080](http://localhost:8080)
-    -   *User: `root` | Pass: `rootpassword`*
+-   **Database**: Managed via **MySQL Workbench** or any other MySQL client.
 
 ---
 
@@ -127,12 +123,10 @@ Use these accounts to sign in and test the system:
 ## 🛠️ Troubleshooting
 
 -   **"Command not found: npm"**: You need to install [Node.js](https://nodejs.org/).
--   **"Docker not running"**: Open Docker Desktop and wait for the little whale icon to turn green.
 -   **"Database connection error"**: 
-    1. Make sure Docker Desktop is running.
-    2. Run `docker compose up -d mysql` in the main folder.
-    3. Check if the container is running with `docker ps`.
-    4. If it still fails, try changing `DB_HOST=localhost` to `DB_HOST=127.0.0.1` in `backend/.env`.
+    1. Make sure your local MySQL service is running.
+    2. Verify your credentials in `backend/.env`.
+    3. Ensure you created the `vendorhub` database.
 -   **"Port 5000 already in use"**: Close any other terminal where the backend might be running.
 
 ---
@@ -141,4 +135,3 @@ Use these accounts to sign in and test the system:
 Common commands you might need:
 -   `npm run dev`: Starts the project.
 -   `npm run seed`: Resets the database with fresh test data.
--   `docker-compose stop`: Stops the database to save computer memory.

@@ -1,6 +1,0 @@
-node_modules
-.git
-.env
-dist
-backend/node_modules
-backend/data
