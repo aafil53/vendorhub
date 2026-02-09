@@ -27,6 +27,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   }, []);
 
+  const register = useCallback(async (email: string, password: string, name: string, role: AppRole): Promise<boolean> => {
+    try {
+      const { data } = await api.post('/auth/register', { email, password, name, role });
+      if (data) {
+        // Automatically login after registration or just return success
+        // Based on backend implementation returning user object but no token on register
+        // Let's perform a login immediately after register to get the token
+        return await login(email, password, role);
+      }
+    } catch (err) {
+      // ignore
+    }
+    return false;
+  }, [login]);
+
   const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem('currentUser');
@@ -42,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       isAuthenticated: !!user,
       login,
+      register,
       logout,
       hasRole,
     }}>

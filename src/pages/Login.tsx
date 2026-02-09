@@ -2,64 +2,36 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, User, Users, Shield, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppRole } from '@/types/auth';
 import { toast } from 'sonner';
+import { LoginForm } from '@/components/auth/LoginForm';
+import { RegisterForm } from '@/components/auth/RegisterForm';
 
-const roleConfig: Record<AppRole, { icon: React.ElementType; label: string; description: string; color: string }> = {
-  client: {
-    icon: User,
-    label: 'Client',
-    description: 'Manage equipment and create RFQs',
-    color: 'bg-blue-500 hover:bg-blue-600',
-  },
-  vendor: {
-    icon: Users,
-    label: 'Vendor',
-    description: 'View RFQs and submit bids',
-    color: 'bg-emerald-500 hover:bg-emerald-600',
-  },
-  admin: {
-    icon: Shield,
-    label: 'Admin',
-    description: 'System administration',
-    color: 'bg-purple-500 hover:bg-purple-600',
-  },
+const roleConfig: Record<AppRole, { icon: React.ElementType; label: string; color: string; desc: string }> = {
+  client: { icon: User, label: 'Client', color: 'text-blue-500', desc: 'Equipment & RFQs' },
+  vendor: { icon: Users, label: 'Vendor', color: 'text-emerald-500', desc: 'Bids & Orders' },
+  admin: { icon: Shield, label: 'Admin', color: 'text-purple-500', desc: 'Management' },
 };
 
 export default function Login() {
-  const [selectedRole, setSelectedRole] = useState<AppRole | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [selectedRole, setSelectedRole] = useState<AppRole>('client');
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedRole) return;
-
-    setIsLoading(true);
-    const success = await login(email, password, selectedRole);
-    setIsLoading(false);
-
-    if (success) {
-      toast.success('Login successful!');
-      const redirectPath = selectedRole === 'vendor' ? '/vendor' : 
-                           selectedRole === 'admin' ? '/admin' : '/';
-      navigate(redirectPath);
-    } else {
-      toast.error('Invalid credentials', {
-        description: 'Please check your email, password, and role selection.',
-      });
-    }
+  const handleAuthSuccess = () => {
+    toast.success('Authentication successful!');
+    const redirectPath = selectedRole === 'vendor' ? '/vendor' : 
+                         selectedRole === 'admin' ? '/admin' : '/';
+    navigate(redirectPath);
   };
 
   const handleDemoLogin = async (role: AppRole) => {
     setIsLoading(true);
+    setSelectedRole(role);
     const demoCredentials: Record<AppRole, { email: string; password: string }> = {
       client: { email: 'client@example.com', password: '123' },
       vendor: { email: 'vendor1@example.com', password: '123' },
@@ -75,124 +47,93 @@ export default function Login() {
       const redirectPath = role === 'vendor' ? '/vendor' : 
                            role === 'admin' ? '/admin' : '/';
       navigate(redirectPath);
+    } else {
+      toast.error('Demo login failed');
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-muted/50 p-4">
-      <div className="w-full max-w-4xl">
+      <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary shadow-lg shadow-primary/20">
               <Building2 className="h-7 w-7 text-primary-foreground" />
             </div>
-            <h1 className="text-3xl font-bold text-foreground">VendorHub</h1>
+            <h1 className="text-3xl font-bold tracking-tight">VendorHub <span className="text-xs font-normal text-muted-foreground opacity-50">v2.1</span></h1>
           </div>
-          <p className="text-muted-foreground">Select your role to continue</p>
+          <p className="text-muted-foreground">Access your supplier management portal</p>
         </div>
 
-        {/* Role Selection */}
-        {!selectedRole ? (
-          <div className="grid md:grid-cols-3 gap-4">
-            {(Object.entries(roleConfig) as [AppRole, typeof roleConfig[AppRole]][]).map(([role, config]) => (
-              <Card 
-                key={role} 
-                className="cursor-pointer transition-all hover:shadow-lg hover:scale-[1.02] border-2 hover:border-primary/50"
-                onClick={() => setSelectedRole(role)}
-              >
-                <CardHeader className="text-center pb-2">
-                  <div className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full ${config.color} mb-3`}>
-                    <config.icon className="h-7 w-7 text-white" />
-                  </div>
-                  <CardTitle>{config.label}</CardTitle>
-                  <CardDescription>{config.description}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button 
-                    variant="outline" 
-                    className="w-full"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDemoLogin(role);
-                    }}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Quick Demo Login'}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <Card className="max-w-md mx-auto">
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => setSelectedRole(null)}
-                >
-                  ← Back
-                </Button>
-                <div className={`flex h-10 w-10 items-center justify-center rounded-full ${roleConfig[selectedRole].color}`}>
-                  {(() => {
-                    const Icon = roleConfig[selectedRole].icon;
-                    return <Icon className="h-5 w-5 text-white" />;
-                  })()}
-                </div>
-                <div>
-                  <CardTitle className="text-lg">{roleConfig[selectedRole].label} Login</CardTitle>
-                  <CardDescription className="text-sm">{roleConfig[selectedRole].description}</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Signing in...
-                    </>
-                  ) : (
-                    'Sign In'
-                  )}
-                </Button>
-              </form>
+        <Card className="border-2 shadow-xl bg-card/50 backdrop-blur-sm">
+          <CardHeader className="pb-0">
+            <Tabs defaultValue="login" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger value="login" className="text-base py-2">Login</TabsTrigger>
+                <TabsTrigger value="register" className="text-base py-2">Register</TabsTrigger>
+              </TabsList>
               
-              <div className="mt-4 p-3 rounded-lg bg-muted/50 text-sm">
-                <p className="font-medium mb-1">Demo Credentials:</p>
-                <p className="text-muted-foreground">
-                  Email: {selectedRole}@example.com<br />
-                  Password: 123
-                </p>
+              <div className="space-y-4 mb-6">
+                <p className="text-sm font-medium text-center text-muted-foreground">Select your role</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(Object.entries(roleConfig) as [AppRole, typeof roleConfig[AppRole]][]).map(([role, config]) => (
+                    <button
+                      key={role}
+                      onClick={() => setSelectedRole(role)}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-lg border-2 transition-all ${
+                        selectedRole === role 
+                        ? 'border-primary bg-primary/5 shadow-md' 
+                        : 'border-transparent bg-muted/30 hover:bg-muted/50'
+                      }`}
+                    >
+                      <config.icon className={`h-5 w-5 ${selectedRole === role ? config.color : 'text-muted-foreground'}`} />
+                      <span className="text-xs font-semibold">{config.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+
+              <TabsContent value="login">
+                <LoginForm 
+                  role={selectedRole} 
+                  onSuccess={handleAuthSuccess} 
+                  onError={(msg) => toast.error(msg)} 
+                />
+                
+                <div className="relative my-6">
+                  <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
+                  <div className="relative flex justify-center text-xs uppercase"><span className="bg-card px-2 text-muted-foreground">Or demo login</span></div>
+                </div>
+
+                <Button 
+                  variant="outline" 
+                  className="w-full border-dashed"
+                  onClick={() => handleDemoLogin(selectedRole)}
+                  disabled={isLoading}
+                >
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : `Quick Demo as ${roleConfig[selectedRole].label}`}
+                </Button>
+                
+                <div className="mt-4 p-3 rounded-lg bg-muted/30 text-[10px] text-center text-muted-foreground">
+                  Demo User: {selectedRole}@example.com | Pass: 123
+                </div>
+              </TabsContent>
+
+              <TabsContent value="register">
+                <RegisterForm 
+                  role={selectedRole} 
+                  onSuccess={handleAuthSuccess} 
+                  onError={(msg) => toast.error(msg)} 
+                />
+                <p className="text-[10px] text-center text-muted-foreground mt-4 px-6">
+                  By registering, you agree to our terms of service and privacy policy.
+                </p>
+              </TabsContent>
+            </Tabs>
+          </CardHeader>
+          <CardContent className="pt-6" />
+        </Card>
       </div>
     </div>
   );
