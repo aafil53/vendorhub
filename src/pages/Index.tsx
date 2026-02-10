@@ -157,21 +157,30 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background selection:bg-primary/20">
       <DashboardSidebar
         currentView={viewState.type === 'vendor-selection' ? 'equipment' :
           viewState.type === 'bidding' ? 'rfq' :
             viewState.type}
         onNavigate={handleNavigate}
       />
-      <div className="pl-64">
+      <div className="pl-64 flex flex-col min-h-screen relative">
+        {/* Sub-background for content */}
+        <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
+          <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] rounded-full bg-primary/5 blur-[100px]" />
+          <div className="absolute bottom-[20%] left-[20%] w-[30%] h-[30%] rounded-full bg-accent/5 blur-[100px]" />
+        </div>
+
         <DashboardHeader {...headerInfo} />
-        <main className="p-6">
-          {renderContent()}
+        <main className="relative z-10 p-8 flex-1 animate-reveal delay-300">
+          <div className="max-w-[1600px] mx-auto">
+            {renderContent()}
+          </div>
         </main>
       </div>
     </div>
   );
 };
+
 
 export default Index;

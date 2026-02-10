@@ -1,6 +1,15 @@
 # 🚚 VendorHub Management System Setup Guide
 
-Welcome to the **VendorHub Management System**! This guide is designed to help you get the project running on your local machine as quickly and easily as possible, even if you are a beginner.
+Welcome to the **VendorHub Management System**! This platform has been recently upgraded to a **Premium Enterprise Experience**, featuring a sophisticated design system, high-impact typography, and smooth micro-animations.
+
+---
+
+## ✨ Premium UI Highlights
+VendorHub now features a state-of-the-art interface designed for high-stakes procurement:
+- **Design System**: Dual-theme support with `Midnight & Obsidian` for professional dark mode and `Smoke & Paper` for clarity.
+- **Typography**: Powered by **"Plus Jakarta Sans"**, providing a clean and authoritative aesthetic.
+- **Atmospheric Visuals**: Glassmorphism, subtle background glows, and high-fidelity gradients throughout the platform.
+- **Motion System**: Staggered reveal animations (`animate-reveal`) for a captivating and professional user journey.
 
 ---
 
@@ -24,7 +33,7 @@ Before you start, make sure you have these 3 tools installed on your computer:
 3.  **MySQL Server & Workbench**: [Download here](https://dev.mysql.com/downloads/installer/)
 
 > [!TIP]
-> After installing, shared your computer once to ensure everything is set up correctly.
+> After installing, restart your computer once to ensure everything is set up correctly.
 
 ---
 
@@ -104,7 +113,7 @@ npm run dev
 
 ## Step 5: Access the App
 Once everything is running:
--   **Website**: [http://localhost:5173](http://localhost:5173)
+-   **Website**: [http://localhost:5173](http://localhost:5173) (Professional Grade Interface)
 -   **Database**: Managed via **MySQL Workbench** or any other MySQL client.
 
 ---
@@ -135,3 +144,4 @@ Use these accounts to sign in and test the system:
 Common commands you might need:
 -   `npm run dev`: Starts the project.
 -   `npm run seed`: Resets the database with fresh test data.
+-   `npm run build`: Generates the production-grade bundle.

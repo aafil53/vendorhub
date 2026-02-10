@@ -16,41 +16,48 @@ interface StatCardProps {
 export function StatCard({ title, value, subtitle, icon: Icon, trend, variant = 'default' }: StatCardProps) {
   return (
     <div className={cn(
-      "relative overflow-hidden rounded-xl border bg-card p-6 transition-all duration-200 hover:shadow-md",
-      variant === 'warning' && "border-warning/30 bg-warning/5",
-      variant === 'success' && "border-success/30 bg-success/5"
+      "relative group overflow-hidden rounded-2xl glass p-6 transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl hover:shadow-primary/10",
+      variant === 'warning' && "ring-1 ring-warning/30 bg-warning/5",
+      variant === 'success' && "ring-1 ring-success/30 bg-success/5"
     )}>
-      <div className="flex items-start justify-between">
+      {/* Background Glow */}
+      <div className={cn(
+        "absolute -right-4 -top-4 w-24 h-24 blur-3xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 rounded-full",
+        variant === 'warning' ? "bg-warning" : variant === 'success' ? "bg-success" : "bg-primary"
+      )} />
+
+      <div className="relative z-10 flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
+          <p className="text-[11px] uppercase tracking-widest font-extrabold text-muted-foreground/60">{title}</p>
           <p className={cn(
-            "mt-2 text-3xl font-bold",
+            "mt-3 text-4xl font-black tracking-tighter leading-none",
             variant === 'warning' ? "text-warning" : variant === 'success' ? "text-success" : "text-foreground"
           )}>
             {value}
           </p>
           {subtitle && (
-            <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+            <p className="mt-2 text-xs font-semibold text-muted-foreground/60">{subtitle}</p>
           )}
           {trend && (
             <div className={cn(
-              "mt-2 flex items-center gap-1 text-sm font-medium",
-              trend.isPositive ? "text-success" : "text-destructive"
+              "mt-4 flex items-center gap-1.5 text-xs font-bold px-2 py-1 rounded-full w-fit",
+              trend.isPositive ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"
             )}>
               <span>{trend.isPositive ? '↑' : '↓'} {Math.abs(trend.value)}%</span>
-              <span className="text-muted-foreground">vs last month</span>
+              <span className="opacity-60 text-[10px]">vs prev</span>
             </div>
           )}
         </div>
         <div className={cn(
-          "flex h-12 w-12 items-center justify-center rounded-lg",
-          variant === 'warning' ? "bg-warning/10 text-warning" : 
-          variant === 'success' ? "bg-success/10 text-success" : 
-          "bg-primary/10 text-primary"
+          "flex h-14 w-14 items-center justify-center rounded-2xl transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3 shadow-lg",
+          variant === 'warning' ? "bg-warning/20 text-warning shadow-warning/10" : 
+          variant === 'success' ? "bg-success/20 text-success shadow-success/10" : 
+          "bg-primary/20 text-primary shadow-primary/10"
         )}>
-          <Icon className="h-6 w-6" />
+          <Icon className="h-7 w-7" />
         </div>
       </div>
     </div>
   );
 }
+
