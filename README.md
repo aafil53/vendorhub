@@ -7,120 +7,91 @@ Welcome to the **VendorHub Management System**! This platform has been recently 
 ## ✨ Premium UI Highlights
 VendorHub now features a state-of-the-art interface designed for high-stakes procurement:
 - **Design System**: Dual-theme support with `Midnight & Obsidian` for professional dark mode and `Smoke & Paper` for clarity.
-- **Typography**: Powered by **"Plus Jakarta Sans"**, providing a clean and authoritative aesthetic.
-- **Atmospheric Visuals**: Glassmorphism, subtle background glows, and high-fidelity gradients throughout the platform.
-- **Motion System**: Staggered reveal animations (`animate-reveal`) for a captivating and professional user journey.
+- **Atmospheric Visuals**: Glassmorphism, subtle background glows, and high-fidelity gradients.
+- **Motion System**: Staggered reveal animations for a captivating user journey.
+
+## 🚀 Key Features
+- **Integrated Auth**: Role-based access control (Admin, Client, Vendor) with persistent sessions.
+- **Vendor RFQ Receiving**: Live procurement grid for vendors to view and bid on opportunities.
+- **Admin Command Center**: Real-time surveillance of global bid streams and asset vetting.
+- **Professional Bidding**: Secure, digital-first response system with certification verification.
+
+---
+
+## 🛠️ Technical Stack
+- **Frontend**: React 18, Vite, TypeScript, TailwindCSS, Framer Motion (animations).
+- **Backend**: Node.js, Express, Sequelize (ORM), JWT Authentication.
+- **Database**: MySQL (Primary), SQLite (Development fallback).
+- **Integration**: Native `fetch` API via Vite development proxy (`/api`).
 
 ---
 
 ## 📋 Table of Contents
 1. [Prerequisites](#1-prerequisites)
-2. [Step 1: Clone the Project](#step-1-clone-the-project)
-3. [Step 2: Backend Setup (The Engine)](#step-2-backend-setup-the-engine)
-4. [Step 3: Database Setup (The Storage)](#step-3-database-setup-the-storage)
-5. [Step 4: Frontend Setup (The Interface)](#step-4-frontend-setup-the-interface)
-6. [Step 5: Access the App](#step-5-access-the-app)
-7. [🔑 Test Credentials](#-test-credentials)
-8. [🛠️ Troubleshooting](#️-troubleshooting)
+2. [Step 1: Clone & Setup](#step-1-clone--setup)
+3. [Step 2: Backend & Database](#step-2-backend--database)
+4. [Step 3: Frontend Interface](#step-3-frontend-interface)
+5. [🔑 Test Credentials](#-test-credentials)
+6. [💡 Developer Cheat Sheet](#-developer-cheat-sheet)
 
 ---
 
 ## 1. Prerequisites
-Before you start, make sure you have these 3 tools installed on your computer:
-
-1.  **Node.js (v18 or higher)**: [Download here](https://nodejs.org/)
-2.  **Git**: [Download here](https://git-scm.com/)
-3.  **MySQL Server & Workbench**: [Download here](https://dev.mysql.com/downloads/installer/)
-
-> [!TIP]
-> After installing, restart your computer once to ensure everything is set up correctly.
+Ensure you have:
+1. **Node.js (v18+)**: [Download](https://nodejs.org/)
+2. **Git**: [Download](https://git-scm.com/)
+3. **MySQL Server**: [Download](https://dev.mysql.com/downloads/installer/)
 
 ---
 
-## Step 1: Clone the Project
-Open your terminal (Command Prompt, PowerShell, or Git Bash) and run these commands:
-
+## Step 1: Clone & Setup
 ```bash
-# 1. Download the code
 git clone <repository-url>
-
-# 2. Go into the project folder
 cd vendorhub
 ```
 
 ---
 
-## Step 2: Backend Setup (The Engine)
-The backend handles the data and logic.
-
-```bash
-# 1. Enter the backend folder
-cd backend
-
-# 2. Install the necessary packages
-npm install
-
-# 3. Create your environment file (Windows)
-copy .env.example .env
-
-# OR for Mac/Linux:
-# cp .env.example .env
-```
-
----
-
-## Step 3: Database Setup (The Storage)
-We use a **local MySQL** installation.
-
-> [!IMPORTANT]
-> **Database Creation**: Before running the backend, you must create a database named `vendorhub` in your MySQL instance (use MySQL Workbench or the command line).
-
-1.  **Install MySQL**: Ensure MySQL Server is running on your machine.
-2.  **Create Database**:
-    ```sql
-    CREATE DATABASE vendorhub;
-    ```
-3.  **Update Configuration**: Open `backend/.env` and set your `DB_PASSWORD` to your local MySQL root password.
-4.  **Populate the data (CRITICAL)**: Go into the `backend/` folder and run:
-    ```bash
-    # This ensures your database matches the team's data
-    npm run seed
-    ```
-5.  **Start the Backend**:
-    ```bash
-    npm run dev
-    ```
-    *(Keep this terminal open!)*
+## Step 2: Backend & Database
+1. **Install Dependencies**:
+   ```bash
+   cd backend && npm install
+   ```
+2. **Environment Configuration**:
+   ```bash
+   copy .env.example .env
+   # Update DB_PASSWORD in .env to your local MySQL root password
+   ```
+3. **Database Initialization**:
+   - Create a database named `vendorhub` in MySQL.
+   - Run seed data to populate with trial procurement events:
+   ```bash
+   npm run seed
+   ```
+4. **Start Engine**:
+   ```bash
+   npm run dev
+   ```
 
 ---
 
-## Step 4: Frontend Setup (The Interface)
-Open a **NEW** terminal window so the backend terminal keeps running.
-
+## Step 3: Frontend Interface
+Open a **NEW** terminal:
 ```bash
-# 1. Make sure you are in the 'vendorhub' folder
-# 2. Install the packages
+# From the root folder
 npm install
-
-# 3. Create the frontend environment file (Windows)
-copy .env.example .env
-
-# 4. Start the website
 npm run dev
 ```
 
 ---
 
-## Step 5: Access the App
-Once everything is running:
--   **Website**: [http://localhost:5173](http://localhost:5173) (Professional Grade Interface)
--   **Database**: Managed via **MySQL Workbench** or any other MySQL client.
+## Step 4: Access the App
+- **Website**: [http://localhost:5173](http://localhost:5173)
+- **API Proxy**: Automatically routes `/api` to `localhost:5000` via Vite.
 
 ---
 
 ## 🔑 Test Credentials
-Use these accounts to sign in and test the system:
-
 | Role | Email | Password |
 |------|-------|----------|
 | **Admin** | `admin@example.com` | `123` |
@@ -130,18 +101,14 @@ Use these accounts to sign in and test the system:
 ---
 
 ## 🛠️ Troubleshooting
-
--   **"Command not found: npm"**: You need to install [Node.js](https://nodejs.org/).
--   **"Database connection error"**: 
-    1. Make sure your local MySQL service is running.
-    2. Verify your credentials in `backend/.env`.
-    3. Ensure you created the `vendorhub` database.
--   **"Port 5000 already in use"**: Close any other terminal where the backend might be running.
+- **404 API Errors**: Ensure the backend is running on port 5000 before starting the frontend.
+- **Auth Rejections**: Re-run `npm run seed` to ensure credentials match the database state.
+- **Lint Errors in Dev**: The project uses strict ESLint rules for premium code quality. Use `npm run lint` periodically.
 
 ---
 
 ## 💡 Developer Cheat Sheet
-Common commands you might need:
--   `npm run dev`: Starts the project.
--   `npm run seed`: Resets the database with fresh test data.
--   `npm run build`: Generates the production-grade bundle.
+- `npm run dev`: Starts the environment.
+- `npm run seed`: Resets database state.
+- `npm run build`: Production build.
+- `npm run test`: Executes unit and integration tests.
