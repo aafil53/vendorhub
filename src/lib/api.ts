@@ -1,16 +1,12 @@
-import axios from 'axios';
 import { jwtDecode } from 'jwt-decode';
 
-const api = axios.create({ baseURL: '/api' });
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  config.headers = config.headers || {};
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// Placeholder API module - replace with actual backend calls when backend is connected
+const api = {
+  get: async (_url: string) => ({ data: [] as any }),
+  post: async (_url: string, _data?: any) => ({ data: {} as any }),
+  put: async (_url: string, _data?: any) => ({ data: {} as any }),
+  delete: async (_url: string) => ({ data: {} as any }),
+};
 
 export function decodeToken<T = any>(token: string) {
   try {
