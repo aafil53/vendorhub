@@ -26,6 +26,39 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING,
     allowNull: false,
   },
+  // 👇 NEW VENDOR PROFILE FIELDS
+  companyName: {
+    type: DataTypes.STRING,
+    allowNull: true,  // Only vendors
+  },
+  contactName: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  phone: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  certifications: {
+    type: DataTypes.JSON,  // ["ARAMCO", "Third-Party"]
+    defaultValue: [],
+  },
+  categories: {
+    type: DataTypes.JSON,  // ["Lifting", "Earthmoving"]
+    defaultValue: [],
+  },
+  rating: {
+    type: DataTypes.DECIMAL(3, 2),
+    defaultValue: 4.8,
+  },
+  ordersCount: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
+  experienceYears: {
+    type: DataTypes.INTEGER,
+    defaultValue: 0,
+  },
 });
 
 module.exports = User;

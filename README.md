@@ -11,6 +11,7 @@ VendorHub now features a state-of-the-art interface designed for high-stakes pro
 - **Motion System**: Staggered reveal animations for a captivating user journey.
 
 ## 🚀 Key Features
+- **2-Step Vendor Enrolment**: Modern onboarding flow with basic registration followed by professional profile completion.
 - **Integrated Auth**: Role-based access control (Admin, Client, Vendor) with persistent sessions.
 - **Vendor RFQ Receiving**: Live procurement grid for vendors to view and bid on opportunities.
 - **Admin Command Center**: Real-time surveillance of global bid streams and asset vetting.

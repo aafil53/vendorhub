@@ -9,37 +9,20 @@ import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
-export default function VendorDashboard() {
-  const { user, logout } = useAuth();
+import VendorProfile from './VendorProfile';
+import { AlertTriangle, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+function VendorDashboardContent({ user, logout, rfqs, fetchRFQs }: any) {
+  const [submittingFor, setSubmittingFor] = useState<number | null>(null);
+  const [price, setPrice] = useState('');
+  const [certFile, setCertFile] = useState('');
   const navigate = useNavigate();
 
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
-
-  const [rfqs, setRfqs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [submittingFor, setSubmittingFor] = useState<number | null>(null);
-  const [price, setPrice] = useState('');
-  const [certFile, setCertFile] = useState('');
-
-  const fetchRFQs = async () => {
-    setLoading(true);
-    try {
-      const { data } = await (await import('@/lib/api')).default.get('/rfqs?status=open');
-      const myId = user?.id;
-      const myRfqs = data.filter((r: any) => r.vendors && r.vendors.includes(myId));
-      setRfqs(myRfqs);
-    } catch (err) {
-      console.error(err);
-    }
-    setLoading(false);
-  };
-
-  React.useEffect(() => {
-    fetchRFQs();
-  }, []);
 
   return (
     <div className="min-h-screen bg-background selection:bg-primary/20">
@@ -71,6 +54,27 @@ export default function VendorDashboard() {
       </header>
 
       <main className="relative z-10 p-8 max-w-7xl mx-auto space-y-10 animate-reveal">
+        {/* Progress Alert */}
+        {!user?.companyName && (
+          <div className="glass ring-1 ring-yellow-500/30 bg-yellow-500/5 p-6 rounded-3xl flex items-center justify-between border-none">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-2xl bg-yellow-500/10 flex items-center justify-center">
+                <AlertTriangle className="h-6 w-6 text-yellow-500" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-widest text-yellow-500">Incomplete Profile</h3>
+                <p className="text-xs font-bold text-muted-foreground/60">Complete your company details to unlock full bidding capabilities.</p>
+              </div>
+            </div>
+            <Button size="sm" variant="secondary" className="rounded-xl font-black text-[10px] uppercase tracking-widest bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-500 border-none px-6" asChild>
+              <Link to="/vendor/profile" className="flex items-center gap-2">
+                Finish Setup
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </Button>
+          </div>
+        )}
+
         {/* Portal Stats */}
         <div className="grid gap-6 md:grid-cols-4">
           {[
@@ -100,7 +104,7 @@ export default function VendorDashboard() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y divide-white/5">
-              {rfqs.map((rfq) => (
+              {rfqs.map((rfq: any) => (
                 <div key={rfq.id} className="group p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 transition-all hover:bg-white/5">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-1">
@@ -122,7 +126,15 @@ export default function VendorDashboard() {
                       {rfq.status}
                     </Badge>
 
-                    {submittingFor === rfq.id ? (
+                    {!user.companyName ? (
+                      <Button
+                        size="lg"
+                        disabled
+                        className="h-11 px-10 rounded-xl font-black text-xs uppercase tracking-[0.15em] bg-white/5 text-muted-foreground/40 border-none"
+                      >
+                        Profile Required
+                      </Button>
+                    ) : submittingFor === rfq.id ? (
                       <div className="flex flex-wrap items-center gap-3 animate-reveal">
                         <div className="relative">
                           <Input
@@ -195,5 +207,36 @@ export default function VendorDashboard() {
       </main>
     </div>
   );
+}
+
+export default function VendorDashboard() {
+  const { user, logout } = useAuth();
+  const [rfqs, setRfqs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const fetchRFQs = async () => {
+    setLoading(true);
+    try {
+      const { data } = await (await import('@/lib/api')).default.get('/rfqs?status=open');
+      const myId = user?.id;
+      const myRfqs = data.filter((r: any) => r.vendors && r.vendors.includes(myId));
+      setRfqs(myRfqs);
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  React.useEffect(() => {
+    if (user?.companyName) {
+      fetchRFQs();
+    }
+  }, [user]);
+
+  if (!user?.companyName) {
+    return <VendorProfile />;
+  }
+
+  return <VendorDashboardContent user={user} logout={logout} rfqs={rfqs} fetchRFQs={fetchRFQs} />;
 }
 

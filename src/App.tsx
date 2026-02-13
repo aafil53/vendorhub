@@ -8,6 +8,7 @@ import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import VendorDashboard from "./pages/VendorDashboard";
+import VendorProfile from "./pages/VendorProfile";
 import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 
@@ -35,6 +36,14 @@ const App = () => (
               element={
                 <ProtectedRoute allowedRoles={['vendor']}>
                   <VendorDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/vendor/profile" 
+              element={
+                <ProtectedRoute allowedRoles={['vendor']}>
+                  <VendorProfile />
                 </ProtectedRoute>
               } 
             />

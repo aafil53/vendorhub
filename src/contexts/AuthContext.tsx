@@ -13,10 +13,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string, role: AppRole): Promise<boolean> => {
     try {
       const { data } = await api.post('/auth/login', { email, password });
-      if (data?.token) {
+      if (data?.token && data?.user) {
         localStorage.setItem('token', data.token);
-        const payload = decodeToken<any>(data.token);
-        const parsedUser: User = { id: String(payload.id), email: payload.email, name: payload.name, role: payload.role };
+        const parsedUser: User = data.user;
         setUser(parsedUser);
         localStorage.setItem('currentUser', JSON.stringify(parsedUser));
         return true;
@@ -31,9 +30,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data } = await api.post('/auth/register', { email, password, name, role });
       if (data) {
-        // Automatically login after registration or just return success
-        // Based on backend implementation returning user object but no token on register
-        // Let's perform a login immediately after register to get the token
         return await login(email, password, role);
       }
     } catch (err) {
@@ -41,6 +37,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     return false;
   }, [login]);
+
+  const updateProfile = useCallback(async (profileData: Partial<User>): Promise<boolean> => {
+    try {
+      const { data } = await api.put('/auth/profile', profileData);
+      if (data) {
+        const updatedUser = { ...user, ...data } as User;
+        setUser(updatedUser);
+        localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+        return true;
+      }
+    } catch (err) {
+      // ignore
+    }
+    return false;
+  }, [user]);
 
   const logout = useCallback(() => {
     setUser(null);
@@ -58,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!user,
       login,
       register,
+      updateProfile,
       logout,
       hasRole,
     }}>

@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppRole } from '@/types/auth';
 import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface RegisterFormProps {
   role: AppRole;
@@ -18,6 +19,7 @@ export function RegisterForm({ role, onSuccess, onError }: RegisterFormProps) {
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { register } = useAuth();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +28,9 @@ export function RegisterForm({ role, onSuccess, onError }: RegisterFormProps) {
     setIsLoading(false);
 
     if (success) {
+      if (role === 'vendor') {
+        navigate('/vendor'); // Redirect to dashboard, which will redirect to /vendor/profile if needed
+      }
       onSuccess();
     } else {
       onError('Registration failed. Email might already be in use.');
