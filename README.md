@@ -14,6 +14,7 @@ VendorHub now features a state-of-the-art interface designed for high-stakes pro
 - **2-Step Vendor Enrolment**: Modern onboarding flow with basic registration followed by professional profile completion including **equipment categories, ratings, and order history**.
 - **Integrated Auth**: Role-based access control (Admin, Client, Vendor) with persistent sessions.
 - **Vendor RFQ Receiving**: Live procurement grid for vendors to view and bid on opportunities.
+- **Enterprise Vendor Dashboard**: Comprehensive profile management with **completion tracking**, **performance metrics**, and **certification badges**.
 - **Admin Command Center**: Real-time surveillance of global bid streams and asset vetting.
 - **Professional Bidding**: Secure, digital-first response system with certification verification.
 
