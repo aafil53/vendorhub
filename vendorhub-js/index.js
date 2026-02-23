@@ -21,6 +21,10 @@ app.use(express.urlencoded({ extended: true }));
 app.set('view engine', 'ejs')
 
 app.get('/', (req, res) => {
+  res.render('homepage.ejs')
+})
+
+app.post('/', (req, res) => {
   console.log(req.cookies)
   const userid = db.prepare(`SELECT user_id FROM sessions WHERE id=? AND created_at > DATETIME('now','+1 day');`).get(req.cookies.session_id)
   if (userid === undefined) {
@@ -31,10 +35,9 @@ app.get('/', (req, res) => {
   const userinfo = db.prepare(`SELECT * FROM users WHERE id=?`).get(userid.user_id)
   console.log('user info:', userinfo)
   if (userid) {
-    if (userinfo.role === 'client') return res.send('client')
-    if (userinfo.role === 'vendor') return res.send('vendor')
+    if (userinfo.role === 'client') return res.redirect('/users/:userid/client')
+    if (userinfo.role === 'vendor') return res.redirect('/users/:userid/vendor')
   }
-
   res.send('autologin from cookie didnt work')
 })
 
@@ -58,22 +61,21 @@ app.get('/createrequirement', (req, res) => {
 
 })
 
-app.post('/login', async (req, res) => {
+app.post('/', async (req, res) => {
   const { email, password, } = req.body
   if (!email || !password) {
     return res.status(400)
   }
   const row = db.prepare(`SELECT * FROM users WHERE email=?;`).get(email);
   const user_id = db.prepare(`SELECT user_id FROM sessions WHERE id = ? AND created_at > DATETIME('now', '-7 days');
-  `).get(row.id);
+  `).get(req.cookies.session_id);
   if (!row) {
     return res.status(401).send('User Not Found')
   }
   if (!user_id) {
     const relogin_userid = db.prepare(`SELECT ID FROM USERS WHERE EMAIL=?`).get(req.body.email)
     try {
-      const match = bcrypt.compare(password, row.hash);
-
+      const match = await bcrypt.compare(password, row.hash);
       const sessionId = crypto.randomUUID()
       res.cookie('session_id', sessionId, {
         httpOnly: true,
@@ -85,15 +87,14 @@ app.post('/login', async (req, res) => {
       } catch (error) {
         console.log(error)
       }
+      if (!match) return res.send('the password you enteredd was incorrect')
       if (row.role === 'client') return res.send('client')
       if (row.role === 'vendor') return res.send('vendor')
-      if (!match) return res.send('the password you enteredd was incorrect')
       return res.status(403).send('unknown role')
     }
     catch (err) {
       return res.status(500)
     }
-
   }
 });
 
