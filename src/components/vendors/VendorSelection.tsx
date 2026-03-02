@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Star, Mail, Phone, Check, Send } from 'lucide-react';
+import { Star, Mail, Phone, Check, Send, Loader2 } from 'lucide-react';
 import { Equipment } from '@/types/vendor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import { mockVendors } from '@/data/mockData';
 import { toast } from 'sonner';
+import api from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
 
 interface VendorSelectionProps {
   equipment: Equipment;
@@ -18,11 +19,22 @@ interface VendorSelectionProps {
 export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectionProps) {
   const [selectedVendors, setSelectedVendors] = useState<string[]>([]);
 
-  const eligibleVendors = mockVendors;
+  const { data: vendorData, isLoading } = useQuery({
+    queryKey: ['vendors', equipment.category],
+    queryFn: async () => {
+      // Use equipment category for filtering
+      // Map generic categories if needed, or pass directly
+      const category = equipment.category; 
+      const { data } = await api.get(`/equipment/vendors?category=${encodeURIComponent(category)}`);
+      return data;
+    }
+  });
+
+  const eligibleVendors = vendorData?.vendors || [];
 
   const toggleVendor = (vendorId: string) => {
-    setSelectedVendors(prev => 
-      prev.includes(vendorId) 
+    setSelectedVendors(prev =>
+      prev.includes(vendorId)
         ? prev.filter(id => id !== vendorId)
         : [...prev, vendorId]
     );
@@ -87,7 +99,7 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
             <CardTitle className="text-lg">
               Eligible Vendors ({eligibleVendors.length})
             </CardTitle>
-            <Button 
+            <Button
               onClick={handleSend}
               disabled={selectedVendors.length === 0}
               className="gap-2"
@@ -99,67 +111,78 @@ export function VendorSelection({ equipment, onSendRFQ, onBack }: VendorSelectio
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {eligibleVendors.map((vendor) => (
-              <div
-                key={vendor.id}
-                className={cn(
-                  "flex items-center gap-4 rounded-lg border p-4 transition-all cursor-pointer",
-                  selectedVendors.includes(vendor.id)
-                    ? "border-primary bg-primary/5 ring-1 ring-primary"
-                    : "border-border hover:border-primary/50 hover:bg-muted/50"
-                )}
-                onClick={() => toggleVendor(vendor.id)}
-              >
-                <Checkbox
-                  checked={selectedVendors.includes(vendor.id)}
-                  className="h-5 w-5"
-                />
-                
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-                  <span className="text-lg font-semibold text-primary">
-                    {vendor.name.split(' ').map(n => n[0]).join('')}
-                  </span>
-                </div>
 
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-foreground">{vendor.name}</p>
-                    <div className="flex items-center gap-1 text-warning">
-                      <Star className="h-4 w-4 fill-warning" />
-                      <span className="text-sm font-medium">{vendor.rating}</span>
+            {isLoading ? (
+              <div className="flex h-32 items-center justify-center">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : eligibleVendors.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No vendors found for this category ({equipment.category}).
+              </div>
+            ) : (
+              eligibleVendors.map((vendor: any) => (
+                <div
+                  key={vendor.id}
+                  className={cn(
+                    "flex items-center gap-4 rounded-lg border p-4 transition-all cursor-pointer",
+                    selectedVendors.includes(vendor.id)
+                      ? "border-primary bg-primary/5 ring-1 ring-primary"
+                      : "border-border hover:border-primary/50 hover:bg-muted/50"
+                  )}
+                  onClick={() => toggleVendor(vendor.id)}
+                >
+                  <Checkbox
+                    checked={selectedVendors.includes(vendor.id)}
+                    className="h-5 w-5"
+                  />
+
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                    <span className="text-lg font-semibold text-primary">
+                      {vendor.name ? vendor.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2) : '??'}
+                    </span>
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-foreground">{vendor.companyName || vendor.name}</p>
+                      <div className="flex items-center gap-1 text-warning">
+                        <Star className="h-4 w-4 fill-warning" />
+                        <span className="text-sm font-medium">{vendor.rating || 'N/A'}</span>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{vendor.contactName || vendor.name}</p>
+                    <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Mail className="h-3 w-3" />
+                        {vendor.email}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Phone className="h-3 w-3" />
+                        {vendor.phone}
+                      </span>
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">{vendor.company}</p>
-                  <div className="mt-1 flex items-center gap-4 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Mail className="h-3 w-3" />
-                      {vendor.email}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Phone className="h-3 w-3" />
-                      {vendor.phone}
-                    </span>
-                  </div>
-                </div>
 
-                <div className="flex flex-col items-end gap-2">
-                  <div className="flex gap-1">
-                    {vendor.certifications.map(cert => (
-                      <Badge key={cert} variant={getCertificationColor(cert) as any} className="text-xs">
-                        {cert}
-                      </Badge>
-                    ))}
+                  <div className="flex flex-col items-end gap-2">
+                    <div className="flex gap-1">
+                      {vendor.certifications && (Array.isArray(vendor.certifications) ? vendor.certifications : (typeof vendor.certifications === 'string' ? JSON.parse(vendor.certifications) : [])).map((cert: string) => (
+                        <Badge key={cert} variant={getCertificationColor(cert) as any} className="text-xs">
+                          {cert}
+                        </Badge>
+                      ))}
+                    </div>
+                    <p className="text-sm text-muted-foreground">{vendor.ordersCount || 0} orders</p>
                   </div>
-                  <p className="text-sm text-muted-foreground">{vendor.completedOrders} orders</p>
-                </div>
 
-                {selectedVendors.includes(vendor.id) && (
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary">
-                    <Check className="h-4 w-4 text-primary-foreground" />
-                  </div>
-                )}
-              </div>
-            ))}
+                  {selectedVendors.includes(vendor.id) && (
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary">
+                      <Check className="h-4 w-4 text-primary-foreground" />
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </CardContent>
       </Card>

@@ -26,6 +26,8 @@ app.use('/api/bids', require('./routes/bids'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/equipments', require('./routes/equipments'));
 app.use('/api/orders', require('./routes/orders'));
+app.use('/api/equipment', require('./routes/equipment')); // Note: override/addition to existing /api/equipments if any, or distinct
+app.use('/api/vendors', require('./routes/vendors'));
 
 app.get('/ping', (req, res) => res.json({ ok: true, ts: Date.now() }));
 

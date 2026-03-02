@@ -114,3 +114,25 @@ npm run dev
 - `npm run seed`: Resets database state.
 - `npm run build`: Production build.
 - `npm run test`: Executes unit and integration tests.
+
+---
+
+## 🧹 Clean & Verification
+
+### Clean Vendor Data
+To reset the vendor data and remove any fake/seed entries:
+```bash
+cd backend
+# Undo seeds
+npx sequelize-cli db:seed:undo:all
+# Clean incomplete profiles
+node delete_incomplete_vendors.js
+```
+
+### Verification
+1.  **Register Real Vendors**: Create accounts (e.g., Hitachi, Gulf).
+2.  **Display Logic**: ALL vendors with `role='vendor'` are now displayed.
+3.  **Strict Cleanup**: Incomplete profiles are deleted from the database entirely.
+4.  **Client Portal**:
+    -   **Vendor Directory**: Shows all registered vendors.
+    -   **Equipment > Connect Vendors**: Filters by equipment category.
