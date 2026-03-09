@@ -6,17 +6,52 @@ async function seed() {
   await sequelize.sync({ force: true });
   console.log('Database synced (force: true)');
 
-  // Create users: 3 vendors, 1 client, 1 admin
-  const password = await bcrypt.hash('123', 10);
+  // Create users: 2 vendors, 1 client, 1 admin
+  const password = await bcrypt.hash('123456', 10);
 
   const vendors = await Promise.all([
-    User.create({ email: 'vendor1@example.com', hashedPassword: password, role: 'vendor', name: 'Vendor One' }),
-    User.create({ email: 'vendor2@example.com', hashedPassword: password, role: 'vendor', name: 'Vendor Two' }),
-    User.create({ email: 'vendor3@example.com', hashedPassword: password, role: 'vendor', name: 'Vendor Three' }),
+    User.create({ 
+      email: 'hitachi@volvitech.com', 
+      hashedPassword: password, 
+      role: 'vendor', 
+      name: 'Hitachi Admin',
+      companyName: 'Hitachi Construction',
+      contactName: 'Ken Tanaka',
+      phone: '+81 90-1234-5678',
+      categories: ['Crane', 'Excavator'],
+      rating: 4.9,
+      ordersCount: 25,
+      experienceYears: 15
+    }),
+    User.create({ 
+      email: 'gulf@volvitech.com', 
+      hashedPassword: password, 
+      role: 'vendor', 
+      name: 'Gulf Fleet Manager',
+      companyName: 'Gulf Equipment Rental',
+      contactName: 'Ahmed Mansoor',
+      phone: '+971 50-987-6543',
+      categories: ['Excavator', 'Dozer', 'Mixer'],
+      rating: 4.7,
+      ordersCount: 12,
+      experienceYears: 8
+    }),
   ]);
 
-  const client = await User.create({ email: 'client@example.com', hashedPassword: password, role: 'client', name: 'Client A' });
-  const admin = await User.create({ email: 'admin@example.com', hashedPassword: password, role: 'admin', name: 'Admin' });
+  const client = await User.create({ 
+    email: 'client@volvitech.com', 
+    hashedPassword: password, 
+    role: 'client', 
+    name: 'Volvitech Client',
+    companyName: 'Volvitech Construction'
+  });
+
+  const admin = await User.create({ 
+    email: 'admin@volvitech.com', 
+    hashedPassword: password, 
+    role: 'admin', 
+    name: 'System Admin' 
+  });
 
   // Create 5 equipment items
   const equipments = await Promise.all([

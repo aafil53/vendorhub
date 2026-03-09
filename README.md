@@ -1,138 +1,134 @@
-# 🚚 VendorHub Management System Setup Guide
+# VendorHub VMS - Production README 🚀
 
-Welcome to the **VendorHub Management System**! This platform has been recently upgraded to a **Premium Enterprise Experience**, featuring a sophisticated design system, high-impact typography, and smooth micro-animations.
+**Full-cycle Vendor Management System** (RFQ → Bid → PO). **React + Node + MySQL Workbench**. **Copy-paste setup ready!**
 
----
+## 🎯 **What You'll Get (5 Minutes)**
+```
+✅ Client Portal → Equipment → RFQ → Bid comparison → Purchase Order
+✅ Vendor Portal → RFQ Inbox → Accept → Submit Response → Invoice  
+✅ Admin Dashboard → Analytics + Approvals
+✅ Multi-tenant security → Enterprise-grade
+✅ Live notifications → Real-time updates
+```
 
-## ✨ Premium UI Highlights
-VendorHub now features a state-of-the-art interface designed for high-stakes procurement:
-- **Design System**: Dual-theme support with `Midnight & Obsidian` for professional dark mode and `Smoke & Paper` for clarity.
-- **Atmospheric Visuals**: Glassmorphism, subtle background glows, and high-fidelity gradients.
-- **Motion System**: Staggered reveal animations for a captivating user journey.
+## 📦 **Prerequisites (Install Once)**
+```powershell
+# Node.js 18+ (https://nodejs.org)
+node --version  # Should be v18+ or v20+
 
-## 🚀 Key Features
-- **2-Step Vendor Enrolment**: Modern onboarding flow with basic registration followed by professional profile completion including **equipment categories, ratings, and order history**.
-- **Integrated Auth**: Role-based access control (Admin, Client, Vendor) with persistent sessions.
-- **Vendor RFQ Receiving**: Live procurement grid for vendors to view and bid on opportunities.
-- **Enterprise Vendor Dashboard**: Comprehensive profile management with **completion tracking**, **performance metrics**, and **certification badges**.
-- **Admin Command Center**: Real-time surveillance of global bid streams and asset vetting.
-- **Professional Bidding**: Secure, digital-first response system with certification verification.
+# MySQL Server running (localhost:3306)
+# MySQL Workbench installed
+```
 
----
+## 🚀 **1-Click Setup (Copy-Paste All)**
 
-## 🛠️ Technical Stack
-- **Frontend**: React 18, Vite, TypeScript, TailwindCSS, Framer Motion (animations).
-- **Backend**: Node.js, Express, Sequelize (ORM), JWT Authentication.
-- **Database**: MySQL (Primary), SQLite (Development fallback).
-- **Integration**: Native `fetch` API via Vite development proxy (`/api`).
-
----
-
-## 📋 Table of Contents
-1. [Prerequisites](#1-prerequisites)
-2. [Step 1: Clone & Setup](#step-1-clone--setup)
-3. [Step 2: Backend & Database](#step-2-backend--database)
-4. [Step 3: Frontend Interface](#step-3-frontend-interface)
-5. [🔑 Test Credentials](#-test-credentials)
-6. [💡 Developer Cheat Sheet](#-developer-cheat-sheet)
-
----
-
-## 1. Prerequisites
-Ensure you have:
-1. **Node.js (v18+)**: [Download](https://nodejs.org/)
-2. **Git**: [Download](https://git-scm.com/)
-3. **MySQL Server**: [Download](https://dev.mysql.com/downloads/installer/)
-
----
-
-## Step 1: Clone & Setup
-```bash
-git clone <repository-url>
+### **Step 1: Clone & Install**
+```powershell
+git clone https://github.com/aafil53/vendorhub.git
 cd vendorhub
 ```
 
----
-
-## Step 2: Backend & Database
-1. **Install Dependencies**:
-   ```bash
-   cd backend && npm install
-   ```
-2. **Environment Configuration**:
-   ```bash
-   copy .env.example .env
-   # Update DB_PASSWORD in .env to your local MySQL root password
-   ```
-3. **Database Initialization**:
-   - Create a database named `vendorhub` in MySQL.
-   - Run seed data to populate with trial procurement events:
-   ```bash
-   npm run seed
-   ```
-4. **Start Engine**:
-   ```bash
-   npm run dev
-   ```
-
----
-
-## Step 3: Frontend Interface
-Open a **NEW** terminal:
-```bash
-# From the root folder
-npm install
-npm run dev
-```
-
----
-
-## Step 4: Access the App
-- **Website**: [http://localhost:5173](http://localhost:5173)
-- **API Proxy**: Automatically routes `/api` to `localhost:5000` via Vite.
-
----
-
-## 🔑 Test Credentials
-| Role | Email | Password |
-|------|-------|----------|
-| **Admin** | `admin@example.com` | `123` |
-| **Client** | `client@example.com` | `123` |
-| **Vendor** | `vendor1@example.com` | `123` |
-
----
-
-## 🛠️ Troubleshooting
-- **404 API Errors**: Ensure the backend is running on port 5000 before starting the frontend.
-- **Auth Rejections**: Re-run `npm run seed` to ensure credentials match the database state.
-- **Lint Errors in Dev**: The project uses strict ESLint rules for premium code quality. Use `npm run lint` periodically.
-
----
-
-## 💡 Developer Cheat Sheet
-- `npm run dev`: Starts the environment.
-- `npm run seed`: Resets database state.
-- `npm run build`: Production build.
-- `npm run test`: Executes unit and integration tests.
-
----
-
-## 🧹 Clean & Verification
-
-### Clean Vendor Data
-To reset the vendor data and remove any fake/seed entries:
-```bash
+### **Step 2: Backend Setup**
+```powershell
+# Go to backend folder
 cd backend
-# Undo seeds
-npx sequelize-cli db:seed:undo:all
-# Clean incomplete profiles
-node delete_incomplete_vendors.js
+npm install
 ```
 
-### Verification
-1.  **Register Real Vendors**: Create accounts (e.g., Hitachi, Gulf).
-2.  **Display Logic**: ALL vendors with `role='vendor'` are now displayed.
-3.  **Strict Cleanup**: Incomplete profiles are deleted from the database entirely.
-4.  **Client Portal**:
-    -   **Vendor Directory**: Shows all registered vendors.
-    -   **Equipment > Connect Vendors**: Filters by equipment category.
+### **Step 3: MySQL Workbench Setup**
+```sql
+-- Open MySQL Workbench, connect to localhost:3306
+-- Run this SQL:
+CREATE DATABASE vendorhub;
+USE vendorhub;
+```
+
+### **Step 4: Environment (.env)**
+```powershell
+# Create backend/.env (Copy-paste exactly)
+echo DB_HOST=localhost > .env
+echo DB_PORT=3306 >> .env  
+echo DB_NAME=vendorhub >> .env
+echo DB_USER=root >> .env
+echo DB_PASS=YOUR_MYSQL_PASSWORD >> .env
+echo DB_DIALECT=mysql >> .env
+echo JWT_SECRET=supersecret >> .env
+echo PORT=5000 >> .env
+```
+**⚠️ Replace `YOUR_MYSQL_PASSWORD` with your actual MySQL root password (e.g., `Aafil@2004`)!**
+
+### **Step 5: Database Migration (No Seed)**
+```powershell
+# Create all tables (Users, RFQ, Bid, Equipment, Notification)
+npx sequelize-cli db:migrate
+```
+
+### **Step 6: Frontend (Root)**
+```powershell
+# In a new terminal, from the root folder:
+npm install
+npm run dev  # http://localhost:5173
+```
+
+### **Step 7: Backend (New Terminal)**
+```powershell
+# In another terminal, from /backend folder:
+npm run dev   # http://localhost:5000
+```
+
+## ✅ **Step 8: First Users (Production Data)**
+Browser: `http://localhost:5173/register`
+
+### **1. 👨💼 CLIENT Registration**
+- **Email**: `client@volvitech.com`
+- **Role**: `Client`
+- **Company**: `Volvitech Construction`
+
+### **2. 👨🔧 VENDOR Registration**
+- **Email**: `hitachi@volvitech.com`
+- **Role**: `Vendor`
+- **Categories**: `["Cranes", "Excavators"]`
+
+### **3. 👨💻 ADMIN Registration**
+- **Email**: `admin@volvitech.com`
+- **Role**: `Admin`
+
+## 🧪 **Live Demo Test Flow**
+```
+1️⃣ Client Login → Equipment Catalog → "Crane Pro X" → **Send RFQ**
+2️⃣ Select vendors → **Send RFQ** → Success toast!
+3️⃣ Vendor Login → 🔔 **RFQ Inbox (1)** → **Accept RFQ**
+4️⃣ **Submit Bid** → Price: $12,500 → Submit
+5️⃣ Client Login → View Bids → **Compare & Award**
+```
+
+## ⚙️ **Quick Reset (Clean Slate)**
+```powershell
+# If you want to wipe everything and start over:
+npx sequelize-cli db:migrate:undo:all
+npx sequelize-cli db:migrate
+# Now register fresh users via /register
+```
+
+## 🛡️ **Production Security Features**
+```
+🔒 JWT Authentication → All APIs secured
+🛡️ Role-Based Access → Client/Vendor/Admin isolation  
+🔍 Audit Logging → SOC2 compliance ready
+🚫 Multi-tenant Isolation → No data leaks
+🛡️ SQL Injection Safe → Sequelize ORM
+```
+
+## 📱 **Mobile-First Design**
+```
+✅ shadcn/ui + Tailwind → Perfect mobile UX
+✅ Collapsible RFQ inbox → Zero scroll waste
+✅ Touch-optimized buttons → iOS/Android ready
+✅ Responsive tables → All screen sizes
+```
+
+***
+
+**Manual data = Enterprise best practice ✅** 🎯
+
+**Status: Production Setup Ready!** 🚀
