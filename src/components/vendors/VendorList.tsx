@@ -1,4 +1,4 @@
-import { Star, Mail, Phone, MapPin, Building, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Star, Mail, Phone, Building, Loader2, ChevronLeft, ChevronRight, Send } from 'lucide-react';
 import api from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { useState } from 'react';
 
-export function VendorList() {
+interface VendorListProps {
+  onSendRFQ?: (category: string) => void;
+}
+
+export function VendorList({ onSendRFQ }: VendorListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const limit = 9;
@@ -130,9 +134,27 @@ export function VendorList() {
                   </div>
 
                   {/* Action */}
-                  <Button variant="outline" className="w-full">
-                    View Profile
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1 text-xs">
+                      View Profile
+                    </Button>
+                    {onSendRFQ && (() => {
+                      const cats = Array.isArray(vendor.categories)
+                        ? vendor.categories
+                        : (typeof vendor.categories === 'string' ? (() => { try { return JSON.parse(vendor.categories); } catch { return []; } })() : []);
+                      const firstCat = cats[0];
+                      return firstCat ? (
+                        <Button
+                          size="sm"
+                          className="flex-1 gap-1.5 text-xs"
+                          onClick={() => onSendRFQ(firstCat)}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          Send RFQ
+                        </Button>
+                      ) : null;
+                    })()}
+                  </div>
                 </CardContent>
               </Card>
             ))}

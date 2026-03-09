@@ -6,6 +6,8 @@ const Equipment = require('./Equipment');
 const RFQ = require('./RFQ');
 const Bid = require('./Bid');
 const Order = require('./Order');
+const Notification = require('./Notification');
+
 
 // Associations
 User.hasMany(RFQ, { foreignKey: 'clientId', as: 'rfqs' });
@@ -30,6 +32,10 @@ User.hasMany(Order, { foreignKey: 'clientId', as: 'clientOrders' });
 Order.belongsTo(User, { foreignKey: 'vendorId', as: 'vendor' });
 User.hasMany(Order, { foreignKey: 'vendorId', as: 'vendorOrders' });
 
+// Notification associations
+User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' });
+Notification.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
 module.exports = {
   sequelize,
   User,
@@ -37,4 +43,5 @@ module.exports = {
   RFQ,
   Bid,
   Order,
+  Notification,
 };

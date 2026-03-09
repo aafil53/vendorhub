@@ -1,16 +1,47 @@
 const express = require('express');
 const { RFQ, Equipment, User, Bid } = require('../models');
 const router = express.Router();
+const { authMiddleware } = require('../middleware/auth');
+const { Op } = require('sequelize');
 
-// GET /api/rfqs?status=open
-router.get('/', async (req, res) => {
+// GET /api/rfqs
+router.get('/', authMiddleware, async (req, res) => {
   try {
-    const status = req.query.status;
     const where = {};
+    const status = req.query.status;
     if (status) where.status = status;
-    const rfqs = await RFQ.findAll({ where, order: [['createdAt', 'DESC']] });
+    
+    // Role-based filtering (Multi-tenant isolation)
+    if (req.user.role === 'client') {
+      where.clientId = req.user.id;
+    } else if (req.user.role === 'vendor') {
+      // In SQLite/Sequelize with JSON type, we might need to handle this carefully
+      // If Sequelize dialect is sqlite, JSON is stored as string
+      // For now, let's use a simpler approach that works across dialects or filter in JS if needed
+      // But the user suggested [Op.contains] which is for Postgres.
+      // For SQLite, we'll fetch and filter if necessary, or use Op.like if possible
+    } else if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
 
-    const result = await Promise.all(rfqs.map(async (r) => {
+    const rfqs = await RFQ.findAll({ 
+      where, 
+      order: [['createdAt', 'DESC']] 
+    });
+
+    // Post-filter for vendors if needed (SQLite JSON handling)
+    let filteredRfqs = rfqs;
+    if (req.user.role === 'vendor') {
+      filteredRfqs = rfqs.filter(r => {
+        let vList = r.vendors;
+        if (typeof vList === 'string') {
+          try { vList = JSON.parse(vList); } catch (e) { vList = []; }
+        }
+        return Array.isArray(vList) && vList.map(String).includes(String(req.user.id));
+      });
+    }
+
+    const result = await Promise.all(filteredRfqs.map(async (r) => {
       const equipment = await Equipment.findByPk(r.equipmentId);
       const client = await User.findByPk(r.clientId);
       const bidsRaw = await Bid.findAll({ where: { rfqId: r.id } });
@@ -22,7 +53,6 @@ router.get('/', async (req, res) => {
           vendorId: b.vendorId,
           vendorName: vendor?.name || vendor?.email || 'Vendor',
           price: parseFloat(b.price),
-          certification: b.certFile ? 'Provided' : 'Missing',
           certFile: b.certFile,
           availability: b.availability,
           status: b.status,
@@ -44,7 +74,7 @@ router.get('/', async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    console.error(err);
+    console.error('Fetch RFQs error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

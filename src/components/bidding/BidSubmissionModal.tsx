@@ -42,7 +42,7 @@ export function BidSubmissionModal({ isOpen, onClose, rfq }: BidSubmissionModalP
       return data;
     },
     onSuccess: () => {
-      toast.success('Bid submitted successfully!');
+      toast.success('Response submitted successfully!');
       queryClient.invalidateQueries({ queryKey: ['rfqs'] });
       onClose();
       setPrice('');
@@ -50,7 +50,7 @@ export function BidSubmissionModal({ isOpen, onClose, rfq }: BidSubmissionModalP
       setCertFile(null);
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to submit bid');
+      toast.error(error.response?.data?.error || 'Failed to send response');
     }
   });
 
@@ -67,7 +67,7 @@ export function BidSubmissionModal({ isOpen, onClose, rfq }: BidSubmissionModalP
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Submit Bid for {rfq?.equipmentName}</DialogTitle>
+          <DialogTitle>Send Response for {rfq?.equipmentName}</DialogTitle>
           <DialogDescription>
             Enter your price and availability details.
           </DialogDescription>
@@ -119,7 +119,7 @@ export function BidSubmissionModal({ isOpen, onClose, rfq }: BidSubmissionModalP
               Cancel
             </Button>
             <Button type="submit" disabled={submitBid.isPending}>
-              {submitBid.isPending ? 'Submitting...' : 'Submit Bid'}
+              {submitBid.isPending ? 'Sending...' : 'Send Response'}
             </Button>
           </DialogFooter>
         </form>

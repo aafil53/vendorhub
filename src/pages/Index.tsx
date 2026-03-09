@@ -3,6 +3,7 @@ import { DashboardSidebar } from '@/components/layout/DashboardSidebar';
 import { DashboardHeader } from '@/components/layout/DashboardHeader';
 import { DashboardOverview } from '@/components/dashboard/DashboardOverview';
 import { EquipmentTable } from '@/components/equipment/EquipmentTable';
+import { EquipmentCatalog } from '@/components/equipment/EquipmentCatalog';
 import { VendorSelection } from '@/components/vendors/VendorSelection';
 import { VendorList } from '@/components/vendors/VendorList';
 import { RFQList } from '@/components/rfq/RFQList';
@@ -15,21 +16,23 @@ import { jwtDecode } from 'jwt-decode';
 
 type ViewState =
   | { type: 'dashboard' }
-  | { type: 'equipment' }
+  | { type: 'equipment' }              // admin: static inventory
+  | { type: 'equipment-catalog' }      // client: vendor-driven catalog
   | { type: 'vendors' }
-  | { type: 'vendor-selection'; equipment: Equipment }
+  | { type: 'vendor-selection'; category: string; equipmentId?: number; equipmentName?: string }
   | { type: 'rfq' }
   | { type: 'bidding'; rfq: RFQ }
   | { type: 'orders' }
   | { type: 'reports' }
   | { type: 'settings' }
-  | { type: 'admin-bids' }; // New view for admin
+  | { type: 'admin-bids' };
 
 const viewTitles: Record<string, { title: string; subtitle?: string }> = {
   dashboard: { title: 'Dashboard', subtitle: 'Overview of your vendor management system' },
-  equipment: { title: 'Equipment Inventory', subtitle: 'Manage equipment and detect shortages' },
-  vendors: { title: 'Vendor Management', subtitle: 'Browse and manage vendor relationships' },
-  'vendor-selection': { title: 'Vendor Bidding System', subtitle: 'Select vendors for RFQ' },
+  equipment: { title: 'System Inventory', subtitle: 'Manage equipment and detect shortages' },
+  'equipment-catalog': { title: 'Equipment Catalog', subtitle: 'Browse available equipment by vendor category' },
+  vendors: { title: 'Vendor Directory', subtitle: 'Browse and connect with vendors' },
+  'vendor-selection': { title: 'Send RFQ', subtitle: 'Select vendors and send a request for quotation' },
   rfq: { title: 'RFQ & Bids', subtitle: 'Manage requests for quotation and compare bids' },
   bidding: { title: 'Bid Comparison', subtitle: 'Compare and select vendor bids' },
   orders: { title: 'Purchase Orders', subtitle: 'Track and manage orders' },
@@ -48,9 +51,11 @@ const Index = () => {
       try {
         const decoded: any = jwtDecode(token);
         setUserRole(decoded.role);
-        // Default admin to admin view
         if (decoded.role === 'admin') {
           setViewState({ type: 'admin-bids' });
+        } else if (decoded.role === 'client') {
+          // Clients default to the dynamic equipment catalog
+          setViewState({ type: 'equipment-catalog' });
         }
       } catch (e) { }
     }
@@ -62,7 +67,8 @@ const Index = () => {
         setViewState({ type: 'dashboard' });
         break;
       case 'equipment':
-        setViewState({ type: 'equipment' });
+        // Clients see the dynamic catalog; admins see the static inventory
+        setViewState(userRole === 'client' ? { type: 'equipment-catalog' } : { type: 'equipment' });
         break;
       case 'vendors':
         setViewState({ type: 'vendors' });
@@ -84,12 +90,23 @@ const Index = () => {
     }
   };
 
+  // Admin/client: from static EquipmentTable → vendor selection
   const handleCheckVendors = (equipment: Equipment) => {
-    setViewState({ type: 'vendor-selection', equipment });
+    setViewState({
+      type: 'vendor-selection',
+      category: equipment.category,
+      equipmentId: parseInt(equipment.id),
+      equipmentName: equipment.name
+    });
   };
 
-  const handleSendRFQ = (vendorIds: number[]) => {
-    // Toast is handled in component
+  // Client: from EquipmentCatalog → vendor selection
+  const handleSelectCategory = (category: string) => {
+    setViewState({ type: 'vendor-selection', category });
+  };
+
+  // Called after RFQ is successfully sent
+  const handleSendRFQ = (_vendorIds: number[]) => {
     setViewState({ type: 'rfq' });
   };
 
@@ -116,15 +133,21 @@ const Index = () => {
       case 'dashboard':
         return <DashboardOverview />;
       case 'equipment':
+        // Static inventory (admin / legacy)
         return <EquipmentTable onCheckVendors={handleCheckVendors} />;
+      case 'equipment-catalog':
+        // Dynamic vendor-driven catalog (clients)
+        return <EquipmentCatalog onSelectCategory={handleSelectCategory} />;
       case 'vendors':
-        return <VendorList />;
+        return <VendorList onSendRFQ={handleSelectCategory} />;
       case 'vendor-selection':
         return (
           <VendorSelection
-            equipment={viewState.equipment}
+            category={viewState.category}
+            equipmentId={viewState.equipmentId}
+            equipmentName={viewState.equipmentName}
             onSendRFQ={handleSendRFQ}
-            onBack={() => setViewState({ type: 'equipment' })}
+            onBack={() => setViewState(userRole === 'client' ? { type: 'equipment-catalog' } : { type: 'equipment' })}
           />
         );
       case 'rfq':
@@ -159,9 +182,12 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background selection:bg-primary/20">
       <DashboardSidebar
-        currentView={viewState.type === 'vendor-selection' ? 'equipment' :
-          viewState.type === 'bidding' ? 'rfq' :
-            viewState.type}
+        currentView={
+          viewState.type === 'vendor-selection' ? (userRole === 'client' ? 'equipment' : 'equipment') :
+            viewState.type === 'bidding' ? 'rfq' :
+              viewState.type === 'equipment-catalog' ? 'equipment' :
+                viewState.type
+        }
         onNavigate={handleNavigate}
       />
       <div className="pl-64 flex flex-col min-h-screen relative">

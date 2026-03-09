@@ -19,6 +19,11 @@ const RFQ = sequelize.define('RFQ', {
     type: DataTypes.JSON,
     allowNull: true,
   },
+  acceptedVendors: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    defaultValue: [],
+  },
   status: {
     type: DataTypes.ENUM('open','closed','awarded','cancelled'),
     allowNull: false,
