@@ -27,3 +27,6 @@ dist-ssr
 *.sqlite
 *.sqlite3
 
+# Environment variables
+.env
+
