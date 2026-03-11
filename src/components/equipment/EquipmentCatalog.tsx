@@ -1,35 +1,32 @@
 import { useState } from 'react';
-import { Boxes, Users, Send, Loader2, AlertCircle, ChevronRight } from 'lucide-react';
+import { Users, Send, Loader2, AlertCircle, Zap, ChevronRight, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 
-const CATEGORY_ICONS: Record<string, string> = {
-    'Lifting Equipment': '🏗️',
-    'Earthmoving Equipment': '🚜',
-    'Transport Equipment': '🚚',
-    'Power Equipment': '⚡',
-    'Cranes': '🏗️',
-    'Excavators': '🚛',
-    'Generators': '⚡',
-    'Trucks': '🚚',
-    'Forklifts': '🔧',
-    'Compressors': '🔩',
-    'Scaffolding': '🏗️',
-    'Pumps': '💧',
+const CATEGORY_META: Record<string, { icon: string; color: string; bg: string }> = {
+    'Cranes': { icon: '🏗️', color: 'text-amber-400', bg: 'bg-amber-400/10' },
+    'Excavators': { icon: '🚜', color: 'text-orange-400', bg: 'bg-orange-400/10' },
+    'Lifting Equipment': { icon: '⚙️', color: 'text-amber-400', bg: 'bg-amber-400/10' },
+    'Earthmoving Equipment': { icon: '🚛', color: 'text-orange-400', bg: 'bg-orange-400/10' },
+    'Transport Equipment': { icon: '🚚', color: 'text-blue-400', bg: 'bg-blue-400/10' },
+    'Power Equipment': { icon: '⚡', color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
+    'Generators': { icon: '⚡', color: 'text-yellow-400', bg: 'bg-yellow-400/10' },
+    'Trucks': { icon: '🚚', color: 'text-blue-400', bg: 'bg-blue-400/10' },
+    'Forklifts': { icon: '🔧', color: 'text-teal-400', bg: 'bg-teal-400/10' },
+    'Compressors': { icon: '🔩', color: 'text-teal-400', bg: 'bg-teal-400/10' },
+    'Scaffolding': { icon: '🏗️', color: 'text-amber-400', bg: 'bg-amber-400/10' },
+    'Pumps': { icon: '💧', color: 'text-cyan-400', bg: 'bg-cyan-400/10' },
 };
 
-const getIcon = (name: string) => {
-    // Try direct match first
-    if (CATEGORY_ICONS[name]) return CATEGORY_ICONS[name];
-    // Try keyword match
+const getMeta = (name: string) => {
+    if (CATEGORY_META[name]) return CATEGORY_META[name];
     const lower = name.toLowerCase();
-    for (const [key, icon] of Object.entries(CATEGORY_ICONS)) {
-        if (lower.includes(key.toLowerCase().split(' ')[0])) return icon;
+    for (const [key, val] of Object.entries(CATEGORY_META)) {
+        if (lower.includes(key.toLowerCase().split(' ')[0])) return val;
     }
-    return '🔧';
+    return { icon: '⚙️', color: 'text-slate-400', bg: 'bg-slate-400/10' };
 };
 
 interface EquipmentCatalogProps {
@@ -37,99 +34,131 @@ interface EquipmentCatalogProps {
 }
 
 export function EquipmentCatalog({ onSelectCategory }: EquipmentCatalogProps) {
+    const [search, setSearch] = useState('');
+
     const { data, isLoading } = useQuery({
         queryKey: ['equipment-categories'],
         queryFn: async () => {
             const { data } = await api.get('/equipment/categories');
             return data;
         },
-        staleTime: 30_000
+        staleTime: 30_000,
     });
 
     const categories: { name: string; vendorCount: number }[] = data?.categories || [];
+    const filtered = categories.filter(c =>
+        c.name.toLowerCase().includes(search.toLowerCase())
+    );
 
-    if (isLoading) {
-        return (
-            <div className="flex h-64 items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+    if (isLoading) return (
+        <div className="flex h-64 items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
+                <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold">Loading catalog...</p>
             </div>
-        );
-    }
-
-    if (categories.length === 0) {
-        return (
-            <div className="flex flex-col items-center gap-4 py-20 text-center text-muted-foreground">
-                <AlertCircle className="h-12 w-12 opacity-30" />
-                <div>
-                    <p className="text-lg font-semibold">No Equipment Categories Yet</p>
-                    <p className="text-sm mt-1">Equipment categories will appear here once vendors register and select their equipment types.</p>
-                </div>
-            </div>
-        );
-    }
+        </div>
+    );
 
     return (
-        <div className="space-y-6">
-            {/* Header */}
-            <div>
-                <h2 className="text-xl font-bold tracking-tight">Equipment Catalog</h2>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                    Browse <strong>{categories.length}</strong> equipment categories offered by our vendor network
-                </p>
+        <div className="space-y-8">
+            {/* Header + Search */}
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                <div>
+                    <div className="flex items-center gap-2 mb-1">
+                        <Zap className="h-4 w-4 text-amber-400" />
+                        <span className="text-[10px] uppercase tracking-[0.2em] font-black text-amber-400/80">
+                            Live Catalog
+                        </span>
+                    </div>
+                    <h2 className="text-2xl font-black tracking-tight text-foreground">Equipment Categories</h2>
+                    <p className="text-sm text-muted-foreground/60 mt-0.5">
+                        <span className="text-amber-400 font-bold">{categories.length}</span> categories · {categories.reduce((a, c) => a + c.vendorCount, 0)} vendors available
+                    </p>
+                </div>
+
+                {/* Search */}
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/40" />
+                    <input
+                        type="text"
+                        placeholder="Search categories..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        className="h-10 w-64 pl-9 pr-4 rounded-xl bg-white/5 border border-white/10 text-sm text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400/30 transition-all"
+                    />
+                </div>
             </div>
 
-            {/* Category Grid */}
+            {/* Empty state */}
+            {filtered.length === 0 && (
+                <div className="flex flex-col items-center gap-4 py-20 text-center">
+                    <AlertCircle className="h-12 w-12 text-muted-foreground/20" />
+                    <div>
+                        <p className="text-base font-bold text-muted-foreground/50">
+                            {search ? `No results for "${search}"` : 'No Equipment Categories Yet'}
+                        </p>
+                        <p className="text-sm text-muted-foreground/30 mt-1">
+                            Categories appear once vendors register and select equipment types.
+                        </p>
+                    </div>
+                </div>
+            )}
+
+            {/* Grid */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {categories.map((cat) => (
-                    <Card
-                        key={cat.name}
-                        className="group cursor-pointer overflow-hidden border transition-all hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
-                        onClick={() => onSelectCategory(cat.name)}
-                    >
-                        <CardContent className="p-0">
-                            {/* Coloured top strip */}
-                            <div className="h-1.5 bg-gradient-to-r from-primary/60 to-primary/20" />
+                {filtered.map((cat, idx) => {
+                    const meta = getMeta(cat.name);
+                    return (
+                        <button
+                            key={cat.name}
+                            onClick={() => onSelectCategory(cat.name)}
+                            className="group relative text-left rounded-2xl border border-white/5 bg-white/3 hover:bg-white/8 hover:border-amber-400/30 transition-all duration-300 overflow-hidden hover:-translate-y-1 hover:shadow-2xl hover:shadow-amber-400/5"
+                            style={{ animationDelay: `${idx * 40}ms` }}
+                        >
+                            {/* Top accent line */}
+                            <div className={`h-[2px] w-full bg-gradient-to-r from-transparent via-amber-400/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300`} />
 
-                            <div className="p-5 space-y-3">
-                                {/* Icon + Name */}
+                            <div className="p-5 space-y-4">
+                                {/* Icon row */}
                                 <div className="flex items-start justify-between">
-                                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-2xl">
-                                        {getIcon(cat.name)}
+                                    <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${meta.bg} text-2xl transition-transform duration-300 group-hover:scale-110`}>
+                                        {meta.icon}
                                     </div>
-                                    <ChevronRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-primary transition-colors mt-1" />
+                                    <ChevronRight className={`h-4 w-4 ${meta.color} opacity-0 group-hover:opacity-100 transition-all duration-300 mt-1 group-hover:translate-x-0.5`} />
                                 </div>
 
+                                {/* Name */}
                                 <div>
-                                    <h3 className="font-bold text-foreground leading-tight">{cat.name}</h3>
+                                    <h3 className="font-bold text-foreground leading-tight group-hover:text-amber-300 transition-colors">
+                                        {cat.name}
+                                    </h3>
                                     <div className="flex items-center gap-1.5 mt-1.5">
-                                        <Users className="h-3.5 w-3.5 text-muted-foreground" />
-                                        <span className="text-xs text-muted-foreground">
-                                            {cat.vendorCount} {cat.vendorCount === 1 ? 'vendor' : 'vendors'} available
+                                        <Users className="h-3 w-3 text-muted-foreground/40" />
+                                        <span className="text-xs text-muted-foreground/50">
+                                            {cat.vendorCount} {cat.vendorCount === 1 ? 'vendor' : 'vendors'}
                                         </span>
+                                        {cat.vendorCount > 0 && (
+                                            <span className="ml-auto">
+                                                <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
 
-                                <Button
-                                    size="sm"
-                                    className="w-full gap-2 text-xs"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onSelectCategory(cat.name);
-                                    }}
-                                >
-                                    <Send className="h-3.5 w-3.5" />
+                                {/* CTA */}
+                                <div className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold transition-all duration-300 ${meta.bg} ${meta.color} group-hover:opacity-100 opacity-70`}>
+                                    <Send className="h-3 w-3" />
                                     Send RFQ
-                                </Button>
+                                </div>
                             </div>
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
 
-            <p className="text-xs text-muted-foreground text-center pb-2">
-                <Boxes className="inline h-3.5 w-3.5 mr-1 mb-0.5" />
-                Categories are automatically updated as vendors join the platform
-            </p>
+                            {/* Glow on hover */}
+                            <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+                                style={{ boxShadow: 'inset 0 0 40px rgba(251,191,36,0.03)' }} />
+                        </button>
+                    );
+                })}
+            </div>
         </div>
     );
 }

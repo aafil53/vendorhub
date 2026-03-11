@@ -3,8 +3,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   Star, Phone, Building2, FileCheck, Users, PackageCheck, Edit,
-  LogOut, Bell, ClipboardList, Send, Clock, CheckCircle2, Loader2,
-  ChevronDown, ChevronUp
+  Bell, ClipboardList, Send, Clock, CheckCircle2, Loader2,
+  Wifi, WifiOff, TrendingUp, BarChart3, RefreshCw
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -14,15 +14,24 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { BidSubmissionModal } from '@/components/bidding/BidSubmissionModal'
 import { toast } from 'sonner'
+import { useSocket } from '@/hooks/useSocket'
+import { cn } from '@/lib/utils'
+import { LogOut } from 'lucide-react'
 
 interface UserProfile {
-  companyName: string;
-  phone: string;
-  experienceYears: number;
-  rating: number;
-  ordersCount: number;
-  categories: string[];
-  certifications: string[];
+  companyName: string
+  phone: string
+  experienceYears: number
+  rating: number
+  ordersCount: number
+  categories: string[]
+  certifications: string[]
+}
+
+const BID_STATUS: Record<string, { color: string; bg: string; dot: string }> = {
+  accepted: { color: 'text-emerald-400', bg: 'bg-emerald-400/10', dot: 'bg-emerald-400' },
+  rejected: { color: 'text-red-400',     bg: 'bg-red-400/10',     dot: 'bg-red-400'     },
+  pending:  { color: 'text-amber-400',   bg: 'bg-amber-400/10',   dot: 'bg-amber-400'   },
 }
 
 export default function VendorDashboard() {
@@ -30,169 +39,198 @@ export default function VendorDashboard() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const token = localStorage.getItem('token')
+  const { socket, connected } = useSocket()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [selectedRfq, setSelectedRfq] = useState<any>(null)
   const [bidModalOpen, setBidModalOpen] = useState(false)
-  const [isInboxOpen, setIsInboxOpen] = useState(false)
 
   useEffect(() => {
     fetch('http://localhost:5000/api/auth/profile', {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-      .then(r => r.json())
-      .then(setProfile)
-      .catch(() => { })
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.json()).then(setProfile).catch(() => {})
   }, [])
 
-  // Vendor's open RFQs inbox
+  // Socket: live updates
+  useEffect(() => {
+    if (!socket) return
+    socket.on('notification:new', () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
+      queryClient.invalidateQueries({ queryKey: ['notif-count'] })
+      toast.success('New RFQ arrived!', {
+        action: { label: 'View', onClick: () => setIsInboxOpen(true) },
+      })
+    })
+    socket.on('order:created', () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
+      toast.success('🎉 A purchase order was placed on your bid!')
+    })
+    return () => { socket.off('notification:new'); socket.off('order:created') }
+  }, [socket])
+
+  const [isInboxOpen, setIsInboxOpen] = useState(true)
+
   const { data: vendorRfqs = [], isLoading: rfqLoading } = useQuery({
     queryKey: ['vendor-rfqs'],
-    queryFn: async () => {
-      const { data } = await api.get('/rfq/vendor-rfqs')
-      return data
-    },
-    refetchInterval: 30_000, // poll every 30s
+    queryFn: async () => { const { data } = await api.get('/rfq/vendor-rfqs'); return data },
   })
 
-  // Unread notification count
   const { data: notifData } = useQuery({
     queryKey: ['notif-count'],
-    queryFn: async () => {
-      const { data } = await api.get('/notifications/unread-count')
-      return data
-    },
-    refetchInterval: 30_000,
+    queryFn: async () => { const { data } = await api.get('/notifications/unread-count'); return data },
   })
 
-  // Mark all notifications read mutation
   const markAllRead = useMutation({
     mutationFn: () => api.patch('/notifications/mark-all-read'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notif-count'] }),
   })
 
-  // Accept RFQ mutation
   const acceptRfq = useMutation({
     mutationFn: (id: number) => api.post(`/rfq/${id}/accept`),
     onSuccess: () => {
-      toast.success('RFQ Accepted');
-      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] });
+      toast.success('RFQ Accepted')
+      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
     },
-    onError: () => toast.error('Failed to accept RFQ')
+    onError: () => toast.error('Failed to accept RFQ'),
   })
 
   const unreadCount: number = notifData?.count || 0
 
   if (!profile) return (
-    <div className="flex h-screen items-center justify-center">
-      <Loader2 className="animate-spin h-10 w-10 text-primary" />
+    <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 className="animate-spin h-8 w-8 text-indigo-400" />
+        <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/40">Loading profile…</p>
+      </div>
     </div>
   )
 
   const calculateCompletion = () => {
-    let score = 0;
-    if (profile.companyName) score += 20;
-    if (profile.phone) score += 15;
-    if (profile.categories?.length > 0) score += 20;
-    if (profile.rating > 0) score += 15;
-    if (profile.certifications?.length > 0) score += 15;
-    if (profile.experienceYears > 0) score += 15;
-    return Math.min(score, 100);
+    let score = 0
+    if (profile.companyName) score += 20
+    if (profile.phone) score += 15
+    if (profile.categories?.length > 0) score += 20
+    if (profile.rating > 0) score += 15
+    if (profile.certifications?.length > 0) score += 15
+    if (profile.experienceYears > 0) score += 15
+    return Math.min(score, 100)
   }
-
   const completion = calculateCompletion()
-  const displayOrders = profile.ordersCount || 0
 
   const openBidModal = (rfq: any) => {
     setSelectedRfq(rfq)
     setBidModalOpen(true)
-    // Mark notifications for this RFQ as read
     if (unreadCount > 0) markAllRead.mutate()
   }
 
-  const getBidStatusColor = (status: string) => {
-    switch (status) {
-      case 'accepted': return 'text-emerald-600 bg-emerald-50 border-emerald-200'
-      case 'rejected': return 'text-red-600 bg-red-50 border-red-200'
-      default: return 'text-amber-600 bg-amber-50 border-amber-200'
-    }
-  }
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-lg">VH</span>
-            </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-slate-800 bg-clip-text text-transparent">
-              VendorHub
-            </h1>
+    <div className="min-h-screen bg-background selection:bg-indigo-400/20">
+
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/5 bg-background/80 backdrop-blur-xl px-6">
+        {/* Logo */}
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500 shadow-lg shadow-indigo-500/30">
+            <Building2 className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-base font-black tracking-tight text-foreground">VendorHub</h1>
+            <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/40 leading-none">Vendor Portal</p>
+          </div>
+        </div>
+
+        {/* Right controls */}
+        <div className="flex items-center gap-3">
+          {/* Live indicator */}
+          <div className={cn(
+            'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wider border',
+            connected
+              ? 'bg-emerald-400/10 border-emerald-400/20 text-emerald-400'
+              : 'bg-red-400/10 border-red-400/20 text-red-400'
+          )}>
+            {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+            {connected ? 'Live' : 'Offline'}
           </div>
 
-          <div className="flex items-center gap-4">
-            {/* Notification Bell */}
-            <button
-              className="relative p-2 rounded-full hover:bg-slate-100 transition-colors"
-              title="Notifications"
-            >
-              <Bell className="w-5 h-5 text-slate-600" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </span>
-              )}
-            </button>
+          {/* Bell */}
+          <button className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
+            <Bell className="h-4 w-4 text-muted-foreground" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white shadow-lg">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
 
-            <div className="text-right hidden md:block">
-              <p className="text-sm text-gray-600">Connected as</p>
-              <p className="font-semibold text-gray-900">{user?.email || 'Vendor'}</p>
-            </div>
-            <Button variant="outline" onClick={logout} size="sm" className="hover:bg-red-50 hover:text-red-600 border-slate-200">
-              <LogOut className="w-4 h-4 mr-2" /> Logout
-            </Button>
+          <div className="hidden md:block text-right">
+            <p className="text-xs font-bold text-foreground leading-none">{user?.email}</p>
+            <p className="text-[10px] text-muted-foreground/40 mt-0.5">Vendor</p>
           </div>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={logout}
+            className="h-9 px-3 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 transition-all font-black text-xs"
+          >
+            <LogOut className="h-3.5 w-3.5 mr-1.5" />Logout
+          </Button>
         </div>
       </header>
 
-      <div className="container mx-auto p-6 space-y-8">
+      <div className="container mx-auto p-6 space-y-6 max-w-6xl">
 
-        {/* ================================================================
-            RFQ INBOX — Primary Section
-        ================================================================ */}
-        <Card className="shadow-xl border-0 overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white pb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <ClipboardList className="w-6 h-6" />
+        {/* ── Stats row ─────────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-reveal">
+          {[
+            { label: 'Open RFQs',   value: vendorRfqs.length,      icon: ClipboardList, color: 'text-indigo-400',  bg: 'bg-indigo-400/10'  },
+            { label: 'New Alerts',  value: unreadCount,             icon: Bell,          color: 'text-red-400',     bg: 'bg-red-400/10'     },
+            { label: 'Orders Done', value: profile.ordersCount||0,  icon: PackageCheck,  color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+            { label: 'Rating',      value: profile.rating||0,       icon: Star,          color: 'text-amber-400',   bg: 'bg-amber-400/10'   },
+          ].map(s => (
+            <Card key={s.label} className="glass border-none ring-1 ring-white/10 overflow-hidden group">
+              <CardContent className="flex items-center gap-3 p-4 relative">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl shrink-0 ${s.bg} ${s.color} group-hover:scale-110 transition-transform`}>
+                  <s.icon className="h-4.5 w-4.5" />
+                </div>
                 <div>
-                  <CardTitle className="text-xl text-white">RFQ Inbox</CardTitle>
-                  <p className="text-indigo-200 text-sm mt-0.5">Requests awaiting your bid</p>
+                  <p className="text-[9px] uppercase tracking-widest font-black text-muted-foreground/40">{s.label}</p>
+                  <p className={`text-xl font-black tracking-tighter ${s.color}`}>{s.value}</p>
                 </div>
+                <div className={`absolute -right-2 -top-2 w-12 h-12 ${s.bg} blur-xl rounded-full opacity-60`} />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* ── RFQ Inbox ─────────────────────────────────────────────────────── */}
+        <Card className="glass border-none ring-1 ring-white/10 overflow-hidden animate-reveal delay-100">
+          <CardHeader className="px-6 py-4 border-b border-white/5 bg-white/3 flex-row items-center justify-between space-y-0">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-400/10">
+                <ClipboardList className="h-4.5 w-4.5 text-indigo-400" />
               </div>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  {unreadCount > 0 && (
-                    <Badge className="bg-red-500 hover:bg-red-600 text-white border-0 text-xs font-bold">
-                      {unreadCount} new
-                    </Badge>
-                  )}
-                  <Badge variant="outline" className="text-white border-white/30 text-sm font-semibold">
-                    {vendorRfqs.length} open
-                  </Badge>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-white hover:bg-white/20 transition-colors"
-                  onClick={() => setIsInboxOpen(!isInboxOpen)}
-                >
-                  {isInboxOpen ? <ChevronUp className="w-4 h-4 mr-2" /> : <ChevronDown className="w-4 h-4 mr-2" />}
-                  {isInboxOpen ? 'Collapse' : 'Open Inbox'}
-                </Button>
+              <div>
+                <CardTitle className="text-sm font-black tracking-tight">RFQ Inbox</CardTitle>
+                <p className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/30 mt-0.5">
+                  {vendorRfqs.length} open · awaiting your bid
+                </p>
               </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white">
+                  {unreadCount}
+                </span>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsInboxOpen(p => !p)}
+                className="h-8 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground font-black text-[11px] border border-white/10"
+              >
+                {isInboxOpen ? 'Collapse' : 'Expand'}
+              </Button>
             </div>
           </CardHeader>
 
@@ -200,213 +238,192 @@ export default function VendorDashboard() {
             <CardContent className="p-0">
               {rfqLoading ? (
                 <div className="flex h-32 items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+                  <Loader2 className="h-5 w-5 animate-spin text-indigo-400" />
                 </div>
               ) : vendorRfqs.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-14 text-center text-slate-400">
-                  <ClipboardList className="h-10 w-10 opacity-30" />
-                  <p className="font-semibold text-slate-500">No open RFQs right now</p>
-                  <p className="text-sm">When a client sends you an RFQ it will appear here.</p>
+                <div className="flex flex-col items-center gap-2 py-12 text-center">
+                  <ClipboardList className="h-8 w-8 text-muted-foreground/15" />
+                  <p className="font-bold text-muted-foreground/30 text-sm">No open RFQs</p>
+                  <p className="text-xs text-muted-foreground/20">New requests will appear here instantly.</p>
                 </div>
               ) : (
-                <div className="divide-y divide-slate-100">
-                  {vendorRfqs.map((rfq: any) => (
-                    <div key={rfq.id} className="flex items-center gap-4 p-5 hover:bg-slate-50 transition-colors group">
+                <div className="divide-y divide-white/5">
+                  {vendorRfqs.map((rfq: any) => {
+                    const bs = rfq.myBid ? BID_STATUS[rfq.myBid.status] || BID_STATUS.pending : null
+                    const isAccepted = Array.isArray(rfq.acceptedVendors) &&
+                      rfq.acceptedVendors.some((v: any) => String(v) === String(user?.id))
 
-                      {/* Equipment icon */}
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-100 text-2xl">
-                        🏗️
-                      </div>
-
-                      {/* Details */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-bold text-slate-900">{rfq.equipmentName}</p>
-                          <Badge variant="outline" className="text-xs text-indigo-600 border-indigo-200 bg-indigo-50">
-                            RFQ #{rfq.id}
-                          </Badge>
+                    return (
+                      <div key={rfq.id} className="group flex items-center gap-4 px-6 py-4 hover:bg-white/3 transition-colors">
+                        {/* Icon */}
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-400/10 text-xl">
+                          🏗️
                         </div>
-                        <p className="text-sm text-slate-500 mt-0.5">
-                          From <span className="font-medium text-slate-700">{rfq.clientName}</span>
-                          <span className="ml-2 inline-flex items-center gap-1 text-slate-400">
-                            <Clock className="h-3 w-3" />
-                            {new Date(rfq.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </span>
-                        </p>
-                      </div>
 
-                      {/* Bid status / Action */}
-                      <div className="shrink-0 flex items-center gap-3">
-                        {rfq.myBid ? (
-                          <div className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold ${getBidStatusColor(rfq.myBid.status)}`}>
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Bid ${rfq.myBid.price.toLocaleString()} · {rfq.myBid.status}
+                        {/* Details */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-bold text-sm text-foreground group-hover:text-indigo-300 transition-colors">
+                              {rfq.equipmentName}
+                            </p>
+                            <span className="text-[10px] font-black text-indigo-400 bg-indigo-400/10 px-1.5 py-0.5 rounded-full">
+                              #{String(rfq.id).padStart(4, '0')}
+                            </span>
                           </div>
-                        ) : (
-                          (() => {
-                            const accepted = Array.isArray(rfq.acceptedVendors) && rfq.acceptedVendors.some((vid: any) => String(vid) === String(user?.id))
-                            if (accepted) {
-                              return (
-                                <Button
-                                  size="sm"
-                                  className="gap-2 bg-indigo-600 hover:bg-indigo-700"
-                                  onClick={() => openBidModal(rfq)}
-                                >
-                                  <Send className="h-3.5 w-3.5" />
-                                  Send Response
-                                </Button>
-                              )
-                            }
-                            return (
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="gap-2 border-indigo-600 text-indigo-600 hover:bg-indigo-50"
-                                onClick={() => acceptRfq.mutate(rfq.id)}
-                                disabled={acceptRfq.isPending}
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                                Accept
-                              </Button>
-                            )
-                          })()
-                        )}
+                          <p className="text-xs text-muted-foreground/40 mt-0.5">
+                            From <span className="text-muted-foreground/60 font-semibold">{rfq.clientName}</span>
+                            <span className="ml-2 inline-flex items-center gap-1">
+                              <Clock className="h-3 w-3" />
+                              {new Date(rfq.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          </p>
+                        </div>
+
+                        {/* Action / Status */}
+                        <div className="shrink-0">
+                          {bs ? (
+                            <span className={cn(
+                              'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-wide',
+                              bs.bg, bs.color
+                            )}>
+                              <span className={cn('h-1.5 w-1.5 rounded-full', bs.dot)} />
+                              ${rfq.myBid.price.toLocaleString()} · {rfq.myBid.status}
+                            </span>
+                          ) : isAccepted ? (
+                            <Button
+                              size="sm"
+                              onClick={() => openBidModal(rfq)}
+                              className="h-8 px-4 gap-1.5 bg-indigo-500 hover:bg-indigo-400 text-white font-black text-[11px] rounded-xl shadow-lg shadow-indigo-500/20"
+                            >
+                              <Send className="h-3 w-3" /> Submit Bid
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => acceptRfq.mutate(rfq.id)}
+                              disabled={acceptRfq.isPending}
+                              className="h-8 px-4 gap-1.5 bg-white/5 hover:bg-indigo-400/10 text-indigo-400 border-indigo-400/20 font-black text-[11px] rounded-xl transition-all"
+                            >
+                              <CheckCircle2 className="h-3 w-3" /> Accept
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </CardContent>
           )}
         </Card>
 
-        {/* ================================================================
-            Profile Hero Card
-        ================================================================ */}
-        <Card className="max-w-5xl mx-auto shadow-xl border-0 bg-gradient-to-br from-indigo-50 to-purple-50 overflow-hidden relative">
-          <div className="absolute top-0 right-0 p-4">
-            <Button variant="outline" size="sm" onClick={() => navigate('/vendor/profile')} className="bg-white/50 hover:bg-white">
-              <Edit className="w-4 h-4 mr-2" /> Edit Profile
-            </Button>
-          </div>
+        {/* ── Profile + Categories/Certs ─────────────────────────────────────── */}
+        <div className="grid md:grid-cols-3 gap-6 animate-reveal delay-200">
 
-          <CardHeader className="text-center pb-2 pt-8">
-            <div className="w-24 h-24 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full mx-auto mb-4 flex items-center justify-center shadow-lg hover:scale-105 transition-transform">
-              <Building2 className="w-12 h-12 text-white" />
-            </div>
-            <CardTitle className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
-              {profile.companyName || 'Complete Your Profile'}
-            </CardTitle>
+          {/* Profile card */}
+          <Card className="glass border-none ring-1 ring-white/10 overflow-hidden md:col-span-1">
+            <CardContent className="p-6 flex flex-col items-center text-center gap-4 relative">
+              <button
+                onClick={() => navigate('/vendor/profile')}
+                className="absolute top-4 right-4 flex h-8 w-8 items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 transition-all"
+              >
+                <Edit className="h-3.5 w-3.5 text-muted-foreground" />
+              </button>
 
-            <div className="max-w-xs mx-auto mt-4 space-y-1">
-              <div className="flex justify-between text-xs text-muted-foreground font-medium">
-                <span>Profile Strength</span>
-                <span>{completion}%</span>
+              {/* Avatar */}
+              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-xl shadow-indigo-500/20">
+                <Building2 className="h-10 w-10 text-white" />
               </div>
-              <Progress value={completion} className="h-2" />
-            </div>
-          </CardHeader>
 
-          <CardContent className="grid md:grid-cols-2 gap-6 text-sm p-8">
-            <div className="space-y-3">
-              <div className="flex items-center gap-4 p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-white/20 shadow-sm hover:shadow-md transition-all">
-                <div className="p-2 bg-blue-100 rounded-lg"><Phone className="w-5 h-5 text-blue-600" /></div>
-                <div>
-                  <div className="font-semibold text-gray-900">Phone</div>
-                  <div className="text-lg font-medium text-gray-700">{profile.phone || 'Not set'}</div>
+              <div className="w-full">
+                <h3 className="text-lg font-black text-foreground">
+                  {profile.companyName || 'Set Company Name'}
+                </h3>
+                <p className="text-xs text-muted-foreground/40 mt-0.5">{user?.email}</p>
+              </div>
+
+              {/* Profile completion */}
+              <div className="w-full space-y-1.5">
+                <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
+                  <span>Profile Strength</span>
+                  <span className={completion >= 80 ? 'text-emerald-400' : 'text-amber-400'}>{completion}%</span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-white/5">
+                  <div
+                    className={cn(
+                      'h-full rounded-full transition-all duration-1000',
+                      completion >= 80 ? 'bg-emerald-400' : completion >= 50 ? 'bg-amber-400' : 'bg-red-400'
+                    )}
+                    style={{ width: `${completion}%` }}
+                  />
                 </div>
               </div>
-              <div className="flex items-center gap-4 p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-white/20 shadow-sm hover:shadow-md transition-all">
-                <div className="p-2 bg-emerald-100 rounded-lg"><Users className="w-5 h-5 text-emerald-600" /></div>
-                <div>
-                  <div className="font-semibold text-gray-900">Experience</div>
-                  <div className="text-lg font-medium text-gray-700">{profile.experienceYears || 0}+ Years</div>
-                </div>
-              </div>
-            </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center gap-4 p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-white/20 shadow-sm hover:shadow-md transition-all">
-                <div className="p-2 bg-yellow-100 rounded-lg"><Star className="w-5 h-5 text-yellow-600" /></div>
-                <div>
-                  <div className="font-semibold text-gray-900">Rating</div>
-                  <div className="flex items-baseline gap-2">
-                    <div className="text-2xl font-bold text-gray-900">{profile.rating || 0}/5</div>
-                    <div className="text-sm text-muted-foreground">({displayOrders} orders)</div>
+              {/* Details */}
+              <div className="w-full space-y-2 mt-2">
+                {[
+                  { icon: Phone, label: profile.phone || 'Not set' },
+                  { icon: Users, label: `${profile.experienceYears || 0} years exp.` },
+                  { icon: Star,  label: `${profile.rating || 0}/5 rating` },
+                ].map(item => (
+                  <div key={item.label} className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-white/3 border border-white/5">
+                    <item.icon className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                    <span className="text-xs font-semibold text-muted-foreground/60">{item.label}</span>
                   </div>
-                </div>
+                ))}
               </div>
-              <div className="flex items-center gap-4 p-4 bg-white/60 backdrop-blur-sm rounded-xl border border-white/20 shadow-sm hover:shadow-md transition-all">
-                <div className="p-2 bg-purple-100 rounded-lg"><PackageCheck className="w-5 h-5 text-purple-600" /></div>
-                <div>
-                  <div className="font-semibold text-gray-900">Completed Orders</div>
-                  <div className="text-2xl font-bold text-gray-900">{displayOrders}</div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Categories & Certifications */}
-        <div className="grid md:grid-cols-2 gap-6">
-          <Card className="shadow-lg border-none ring-1 ring-gray-100">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <FileCheck className="w-5 h-5 text-indigo-500" /> Equipment Categories
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {profile.categories?.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {profile.categories.map(cat => (
-                    <Badge key={cat} className="bg-indigo-50 text-indigo-700 border-indigo-200 px-3 py-1.5" variant="outline">{cat}</Badge>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6 text-muted-foreground bg-gray-50 rounded-lg border border-dashed">No categories selected</div>
-              )}
             </CardContent>
           </Card>
 
-          <Card className="shadow-lg border-none ring-1 ring-gray-100">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <FileCheck className="w-5 h-5 text-emerald-500" /> Certifications
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {profile.certifications?.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {profile.certifications.map(cert => (
-                    <Badge key={cert} className="bg-emerald-50 text-emerald-700 border-emerald-200 px-3 py-1.5" variant="outline">{cert}</Badge>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-6 text-muted-foreground bg-gray-50 rounded-lg border border-dashed">No certifications added</div>
-              )}
-            </CardContent>
-          </Card>
+          {/* Categories + Certs stacked */}
+          <div className="md:col-span-2 space-y-4">
+            <Card className="glass border-none ring-1 ring-white/10">
+              <CardHeader className="px-5 py-4 border-b border-white/5">
+                <CardTitle className="text-sm font-black flex items-center gap-2">
+                  <FileCheck className="h-4 w-4 text-indigo-400" /> Equipment Categories
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-5">
+                {profile.categories?.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {profile.categories.map(cat => (
+                      <span key={cat} className="inline-flex items-center rounded-full bg-indigo-400/10 border border-indigo-400/20 px-3 py-1.5 text-xs font-black text-indigo-300 uppercase tracking-wider">
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground/30 text-center py-4">No categories selected</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="glass border-none ring-1 ring-white/10">
+              <CardHeader className="px-5 py-4 border-b border-white/5">
+                <CardTitle className="text-sm font-black flex items-center gap-2">
+                  <FileCheck className="h-4 w-4 text-emerald-400" /> Certifications
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-5">
+                {profile.certifications?.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {profile.certifications.map(cert => (
+                      <span key={cert} className="inline-flex items-center gap-1 rounded-full bg-emerald-400/10 border border-emerald-400/20 px-3 py-1.5 text-xs font-black text-emerald-300 uppercase tracking-wider">
+                        ✓ {cert}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground/30 text-center py-4">No certifications added</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
-
-        {/* Stats Banner */}
-        <Card className="bg-gradient-to-r from-indigo-600 to-purple-700 text-white shadow-xl border-none">
-          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-8 py-8">
-            {[
-              { label: 'Total Orders', value: displayOrders },
-              { label: 'Avg Rating', value: profile.rating || 0 },
-              { label: 'Categories', value: profile.categories?.length || 0 },
-              { label: 'Open RFQs', value: vendorRfqs.length },
-            ].map((stat, i) => (
-              <div key={i} className="text-center border-r border-white/20 last:border-0">
-                <div className="text-4xl font-bold tracking-tight">{stat.value}</div>
-                <div className="text-indigo-100 text-sm font-medium uppercase tracking-wider mt-1">{stat.label}</div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
       </div>
 
-      {/* Bid Submission Modal */}
+      {/* Bid Modal */}
       {selectedRfq && (
         <BidSubmissionModal
           isOpen={bidModalOpen}

@@ -2,15 +2,33 @@ const express = require('express');
 const router = express.Router();
 const { Bid, RFQ, User, Equipment } = require('../models');
 const { authMiddleware, requireRole } = require('../middleware/auth');
+const { getIo } = require('../socket');                // ← NEW
 
-// Create a bid (vendor only) - POST /api/bid/submit
+// POST /api/bids/submit (vendor only)
 router.post('/submit', authMiddleware, requireRole(['vendor']), async (req, res) => {
   try {
     const { rfqId, price, certFile, availability } = req.body;
     const rfq = await RFQ.findByPk(rfqId);
     if (!rfq) return res.status(400).json({ error: 'Invalid RFQ' });
     if (rfq.status !== 'open') return res.status(400).json({ error: 'RFQ not open' });
-    const bid = await Bid.create({ rfqId, vendorId: req.user.id, price, certFile: certFile || null, availability: availability || null, status: 'pending' });
+
+    const bid = await Bid.create({
+      rfqId, vendorId: req.user.id, price,
+      certFile: certFile || null, availability: availability || null, status: 'pending'
+    });
+
+    // ← NEW: notify the client who owns this RFQ
+    const io = getIo();
+    if (io) {
+      io.to(`user:${rfq.clientId}`).emit('bid:submitted', {
+        rfqId,
+        bidId: bid.id,
+        vendorName: req.user.name || req.user.email,
+        price: parseFloat(price),
+        message: `${req.user.name || 'A vendor'} submitted a bid of $${parseFloat(price).toLocaleString()} on RFQ #${rfqId}.`,
+      });
+    }
+
     res.json(bid);
   } catch (err) {
     console.error(err);
@@ -18,22 +36,17 @@ router.post('/submit', authMiddleware, requireRole(['vendor']), async (req, res)
   }
 });
 
-// List bids for a given RFQ - GET /api/bids/rfq/:rfqId
+// GET /api/bids/rfq/:rfqId (unchanged)
 router.get('/rfq/:rfqId', async (req, res) => {
   try {
     const bids = await Bid.findAll({ where: { rfqId: req.params.rfqId } });
     const result = await Promise.all(bids.map(async (b) => {
       const vendor = await User.findByPk(b.vendorId);
       return {
-        id: b.id,
-        rfqId: b.rfqId,
-        vendorId: b.vendorId,
+        id: b.id, rfqId: b.rfqId, vendorId: b.vendorId,
         vendorName: vendor?.name || vendor?.email || 'Vendor',
-        price: parseFloat(b.price),
-        certFile: b.certFile,
-        availability: b.availability,
-        status: b.status,
-        createdAt: b.createdAt,
+        price: parseFloat(b.price), certFile: b.certFile,
+        availability: b.availability, status: b.status, createdAt: b.createdAt,
       };
     }));
     res.json(result);
@@ -43,7 +56,7 @@ router.get('/rfq/:rfqId', async (req, res) => {
   }
 });
 
-// GET /api/bids/admin - List all bids for admin
+// GET /api/bids/admin (unchanged)
 router.get('/admin', authMiddleware, requireRole(['admin']), async (req, res) => {
   try {
     const bids = await Bid.findAll({
@@ -53,18 +66,12 @@ router.get('/admin', authMiddleware, requireRole(['admin']), async (req, res) =>
       ],
       order: [['createdAt', 'DESC']]
     });
-
     const formattedBids = bids.map(b => ({
-      id: b.id,
-      vendorName: b.vendor?.name || b.vendor?.email,
-      price: b.price,
-      certFile: b.certFile,
-      availability: b.availability,
+      id: b.id, vendorName: b.vendor?.name || b.vendor?.email,
+      price: b.price, certFile: b.certFile, availability: b.availability,
       equipmentName: b.rfq?.equipment?.name || 'Unknown',
-      status: b.status,
-      createdAt: b.createdAt
+      status: b.status, createdAt: b.createdAt
     }));
-
     res.json(formattedBids);
   } catch (err) {
     console.error(err);
@@ -72,19 +79,15 @@ router.get('/admin', authMiddleware, requireRole(['admin']), async (req, res) =>
   }
 });
 
-// Admin approves a bid: POST /api/bids/:id/approve
+// POST /api/bids/:id/approve (unchanged)
 router.post('/:id/approve', authMiddleware, requireRole(['admin']), async (req, res) => {
   try {
     const bid = await Bid.findByPk(req.params.id);
     if (!bid) return res.status(404).json({ error: 'Bid not found' });
     bid.status = 'accepted';
     await bid.save();
-    // Close RFQ
     const rfq = await RFQ.findByPk(bid.rfqId);
-    if (rfq) {
-      rfq.status = 'awarded';
-      await rfq.save();
-    }
+    if (rfq) { rfq.status = 'awarded'; await rfq.save(); }
     res.json({ ok: true });
   } catch (err) {
     console.error(err);

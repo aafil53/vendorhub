@@ -1,17 +1,9 @@
-import { ArrowLeft, Check, FileText, Shield, User } from 'lucide-react';
+import { ArrowLeft, Check, Shield, User, Trophy, TrendingDown, Clock, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from '@/components/ui/table';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -34,143 +26,221 @@ export function BidComparison({ rfq, onBack, onOrderCreated }: BidComparisonProp
             toast.success('Purchase Order created successfully');
             queryClient.invalidateQueries({ queryKey: ['rfqs'] });
             queryClient.invalidateQueries({ queryKey: ['orders'] });
-            onOrderCreated(); // Navigate to Order History or similar
+            onOrderCreated();
         },
         onError: (error: any) => {
             toast.error(error.response?.data?.error || 'Failed to create PO');
-        }
+        },
     });
 
     const bids = rfq.bids || [];
-    const lowestPrice = Math.min(...bids.map((b: any) => b.price));
+    const lowestPrice = bids.length > 0 ? Math.min(...bids.map((b: any) => b.price)) : 0;
+    const highestPrice = bids.length > 0 ? Math.max(...bids.map((b: any) => b.price)) : 0;
+    const avgPrice = bids.length > 0 ? bids.reduce((a: number, b: any) => a + b.price, 0) / bids.length : 0;
+
+    const getSavings = (price: number) =>
+        highestPrice > lowestPrice ? Math.round(((highestPrice - price) / highestPrice) * 100) : 0;
 
     return (
-        <div className="space-y-10 animate-reveal">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="flex items-center gap-6">
-                    <Button
-                        variant="secondary"
-                        size="sm"
+        <div className="space-y-8 animate-reveal">
+
+            {/* ── Page header ────────────────────────────────────────────────────── */}
+            <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <button
                         onClick={onBack}
-                        className="h-12 w-12 rounded-2xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all flex items-center justify-center p-0"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all shrink-0"
                     >
-                        <ArrowLeft className="h-5 w-5" />
-                    </Button>
+                        <ArrowLeft className="h-4 w-4 text-muted-foreground" />
+                    </button>
                     <div>
-                        <h2 className="text-3xl font-black tracking-tighter">Strategic Bid Analysis</h2>
+                        <h2 className="text-2xl font-black tracking-tight">Bid Comparison</h2>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-black text-primary uppercase tracking-[0.2em] bg-primary/10 px-2 py-0.5 rounded">PROTOCOL #{rfq.id}</span>
-                            <span className="text-[10px] font-black text-muted-foreground/40 uppercase tracking-[0.2em]">Asset: {rfq.equipmentName}</span>
+                            <span className="text-[10px] font-black text-amber-400 uppercase tracking-widest bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full">
+                                RFQ #{String(rfq.id).padStart(4, '0')}
+                            </span>
+                            <span className="text-[11px] font-bold text-muted-foreground/40 uppercase tracking-wider">
+                                {rfq.equipmentName}
+                            </span>
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-4 bg-white/5 p-2 rounded-2xl ring-1 ring-white/10">
-                    <div className="px-4 py-2">
-                        <p className="text-[9px] font-black text-muted-foreground/40 uppercase tracking-widest leading-none">Responses</p>
-                        <p className="text-xl font-black mt-1 leading-none">{bids.length}</p>
-                    </div>
-                    <div className="w-px h-8 bg-white/10" />
-                    <div className="px-4 py-2">
-                        <p className="text-[9px] font-black text-muted-foreground/40 uppercase tracking-widest leading-none">Best Quote</p>
-                        <p className="text-xl font-black mt-1 leading-none text-success">${lowestPrice.toLocaleString()}</p>
-                    </div>
+
+                {/* Summary pills */}
+                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl p-1.5">
+                    {[
+                        { label: 'Bids', value: bids.length, color: 'text-foreground' },
+                        { label: 'Best Price', value: `$${lowestPrice.toLocaleString()}`, color: 'text-emerald-400' },
+                        { label: 'Avg Price', value: `$${Math.round(avgPrice).toLocaleString()}`, color: 'text-amber-400' },
+                    ].map((s, i) => (
+                        <div key={s.label} className={cn('px-4 py-2 text-center', i < 2 && 'border-r border-white/10')}>
+                            <p className="text-[9px] font-black text-muted-foreground/30 uppercase tracking-widest">{s.label}</p>
+                            <p className={`text-base font-black mt-0.5 ${s.color}`}>{s.value}</p>
+                        </div>
+                    ))}
                 </div>
             </div>
 
-            <Card className="glass border-none ring-1 ring-white/10 overflow-hidden">
-                <CardHeader className="p-8 border-b border-white/5 bg-white/5">
-                    <CardTitle className="text-xl font-black tracking-tight">Comparative Matrix</CardTitle>
-                    <CardDescription className="text-xs font-semibold text-muted-foreground/50 uppercase tracking-tight mt-1">Secure vendor selection and PO generation protocol</CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                    <div className="overflow-x-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow className="border-b border-white/5 hover:bg-transparent h-12">
-                                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/50 pl-8">Strategic Partner</TableHead>
-                                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/50">Financial Quote</TableHead>
-                                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/50">Asset Availability</TableHead>
-                                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/50">Vetting/Compliance</TableHead>
-                                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/50">Timestamp</TableHead>
-                                    <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/50 pr-8 text-right">Selection</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {bids.map((bid: any) => {
-                                    const isLowest = bid.price === lowestPrice;
-                                    return (
-                                        <TableRow key={bid.id} className={cn(
-                                            "group border-b border-white/5 transition-all hover:bg-white/5",
-                                            isLowest && "bg-success/5"
-                                        )}>
-                                            <TableCell className="pl-8 py-6">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-accent/20 border border-white/5 group-hover:scale-110 transition-transform duration-500 shadow-lg shadow-primary/5">
-                                                        <User className="h-5 w-5 text-primary" />
-                                                    </div>
-                                                    <span className="text-sm font-black text-foreground">{bid.vendorName}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="text-xl font-black tracking-tighter text-foreground">
-                                                        ${bid.price.toLocaleString()}
-                                                    </span>
-                                                    {isLowest && (
-                                                        <Badge variant="success" className="w-fit text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 border-none shadow-sm shadow-success/20">
-                                                            Optimal Price
-                                                        </Badge>
-                                                    )}
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    <div className="p-1 rounded-full bg-success/10">
-                                                        <Check className="h-3 w-3 text-success" />
-                                                    </div>
-                                                    <span className="text-xs font-bold text-muted-foreground/70">{bid.availability || 'Verified Ready'}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                {bid.certFile ? (
-                                                    <div className="flex items-center gap-2 text-primary cursor-pointer hover:underline" title="View Certification">
-                                                        <Shield className="h-4 w-4" />
-                                                        <span className="text-[11px] font-black uppercase tracking-tight">Verified Protocol</span>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-[11px] font-black uppercase tracking-tight text-muted-foreground/20 italic">No File Protocol</span>
-                                                )}
-                                            </TableCell>
-                                            <TableCell className="text-[11px] font-bold text-muted-foreground/40 font-mono">
-                                                {new Date(bid.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}
-                                            </TableCell>
-                                            <TableCell className="text-right pr-8">
-                                                <Button
-                                                    size="sm"
-                                                    variant="secondary"
+            {/* ── Empty state ────────────────────────────────────────────────────── */}
+            {bids.length === 0 && (
+                <Card className="glass border-none ring-1 ring-white/10">
+                    <CardContent className="flex flex-col items-center gap-3 py-20 text-center">
+                        <Clock className="h-10 w-10 text-muted-foreground/20" />
+                        <p className="font-bold text-muted-foreground/40">No bids received yet</p>
+                        <p className="text-xs text-muted-foreground/25">Vendors will submit their bids here.</p>
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* ── Bid table ──────────────────────────────────────────────────────── */}
+            {bids.length > 0 && (
+                <Card className="glass border-none ring-1 ring-white/10 overflow-hidden">
+                    <CardHeader className="px-8 py-5 border-b border-white/5 bg-white/3 flex-row items-center justify-between space-y-0">
+                        <div>
+                            <CardTitle className="text-base font-black tracking-tight">Vendor Proposals</CardTitle>
+                            <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/30 mt-0.5">
+                                {bids.length} bid{bids.length !== 1 ? 's' : ''} received · select one to generate PO
+                            </p>
+                        </div>
+                        {bids.length > 1 && (
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-400 bg-emerald-400/10 border border-emerald-400/20 px-3 py-1.5 rounded-xl">
+                                <TrendingDown className="h-3.5 w-3.5" />
+                                Up to {getSavings(lowestPrice)}% savings vs highest bid
+                            </div>
+                        )}
+                    </CardHeader>
+
+                    <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow className="border-b border-white/5 hover:bg-transparent">
+                                        {['Vendor', 'Price', 'Availability', 'Cert', 'Submitted', 'Action'].map(h => (
+                                            <TableHead key={h} className={cn(
+                                                'font-black text-[10px] uppercase tracking-widest text-muted-foreground/40 h-11',
+                                                h === 'Vendor' && 'pl-8',
+                                                h === 'Action' && 'pr-8 text-right',
+                                            )}>
+                                                {h}
+                                            </TableHead>
+                                        ))}
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {bids
+                                        .slice()
+                                        .sort((a: any, b: any) => a.price - b.price)
+                                        .map((bid: any, idx: number) => {
+                                            const isBest = bid.price === lowestPrice;
+                                            const savings = getSavings(bid.price);
+                                            const initials = (bid.vendorName || '?')
+                                                .split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase();
+
+                                            return (
+                                                <TableRow
+                                                    key={bid.id}
                                                     className={cn(
-                                                        "h-10 px-6 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all border border-primary/20 bg-primary/10 text-primary hover:bg-primary hover:text-white shadow-lg shadow-primary/10",
-                                                        createPOMutation.isPending && "opacity-50 cursor-wait"
+                                                        'border-b border-white/5 transition-colors group',
+                                                        isBest ? 'bg-emerald-400/3 hover:bg-emerald-400/5' : 'hover:bg-white/3'
                                                     )}
-                                                    onClick={() => createPOMutation.mutate(bid.id)}
-                                                    disabled={createPOMutation.isPending}
                                                 >
-                                                    {createPOMutation.isPending ? (
-                                                        <span className="flex items-center gap-2">Generating...</span>
-                                                    ) : (
-                                                        'Select & Execute PO'
-                                                    )}
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    );
-                                })}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </CardContent>
-            </Card>
+                                                    {/* Vendor */}
+                                                    <TableCell className="pl-8 py-5">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={cn(
+                                                                'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-black transition-transform duration-300 group-hover:scale-105',
+                                                                isBest
+                                                                    ? 'bg-emerald-400/15 text-emerald-400'
+                                                                    : 'bg-white/5 text-muted-foreground/60'
+                                                            )}>
+                                                                {isBest ? <Trophy className="h-4 w-4" /> : initials}
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-bold text-sm text-foreground">{bid.vendorName}</p>
+                                                                {isBest && (
+                                                                    <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wider">
+                                                                        Best Price
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </TableCell>
+
+                                                    {/* Price */}
+                                                    <TableCell className="py-5">
+                                                        <div>
+                                                            <p className={cn(
+                                                                'text-xl font-black tracking-tighter',
+                                                                isBest ? 'text-emerald-400' : 'text-foreground'
+                                                            )}>
+                                                                ${bid.price.toLocaleString()}
+                                                            </p>
+                                                            {savings > 0 && (
+                                                                <p className="text-[10px] font-bold text-emerald-400/70 mt-0.5">
+                                                                    saves {savings}% vs worst
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
+
+                                                    {/* Availability */}
+                                                    <TableCell className="py-5">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Check className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                                                            <span className="text-xs font-semibold text-muted-foreground/60">
+                                                                {bid.availability || 'Ready'}
+                                                            </span>
+                                                        </div>
+                                                    </TableCell>
+
+                                                    {/* Cert */}
+                                                    <TableCell className="py-5">
+                                                        {bid.certFile ? (
+                                                            <div className="flex items-center gap-1.5 text-blue-400">
+                                                                <Shield className="h-3.5 w-3.5" />
+                                                                <span className="text-[11px] font-black uppercase tracking-wider">Verified</span>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-[11px] text-muted-foreground/20 font-bold">—</span>
+                                                        )}
+                                                    </TableCell>
+
+                                                    {/* Date */}
+                                                    <TableCell className="py-5 text-[11px] font-semibold text-muted-foreground/40 font-mono">
+                                                        {new Date(bid.createdAt).toLocaleDateString('en-GB', {
+                                                            day: '2-digit', month: 'short', year: '2-digit'
+                                                        }).toUpperCase()}
+                                                    </TableCell>
+
+                                                    {/* Action */}
+                                                    <TableCell className="py-5 text-right pr-8">
+                                                        <Button
+                                                            size="sm"
+                                                            onClick={() => createPOMutation.mutate(bid.id)}
+                                                            disabled={createPOMutation.isPending}
+                                                            className={cn(
+                                                                'h-9 px-5 rounded-xl font-black text-[11px] uppercase tracking-wider transition-all active:scale-95',
+                                                                isBest
+                                                                    ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-900 shadow-lg shadow-emerald-500/20'
+                                                                    : 'bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground border border-white/10'
+                                                            )}
+                                                        >
+                                                            {createPOMutation.isPending ? (
+                                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                            ) : (
+                                                                'Award PO'
+                                                            )}
+                                                        </Button>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
         </div>
     );
 }
-

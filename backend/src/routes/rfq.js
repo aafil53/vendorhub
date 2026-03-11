@@ -3,8 +3,9 @@ const router = express.Router();
 const { RFQ, Equipment, User, Bid, Notification } = require('../models');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 const { Op } = require('sequelize');
+const { getIo } = require('../socket');                // ← NEW
 
-// POST /api/rfq/create (client only) - create RFQ by equipmentId
+// POST /api/rfq/create (client only)
 router.post('/create', authMiddleware, requireRole(['client']), async (req, res) => {
   try {
     const { equipmentId, vendorIds, quantity } = req.body;
@@ -13,12 +14,13 @@ router.post('/create', authMiddleware, requireRole(['client']), async (req, res)
     }
     const equipment = await Equipment.findByPk(equipmentId);
     if (!equipment) return res.status(400).json({ error: 'Invalid equipment' });
+
     const rfq = await RFQ.create({ clientId: req.user.id, equipmentId, vendors: vendorIds, status: 'open' });
 
-    // Notify each selected vendor (fire-and-forget)
     const client = await User.findByPk(req.user.id, { attributes: ['name', 'email'] });
     const clientLabel = client?.name || client?.email || 'A client';
-    Notification.bulkCreate(
+
+    const notifications = await Notification.bulkCreate(
       vendorIds.map(vendorId => ({
         userId: vendorId,
         type: 'new_rfq',
@@ -27,7 +29,20 @@ router.post('/create', authMiddleware, requireRole(['client']), async (req, res)
         rfqId: rfq.id,
         read: false,
       }))
-    ).catch(e => console.error('Notification error:', e));
+    ).catch(e => { console.error('Notification error:', e); return []; });
+
+    // ← NEW: push real-time event to each vendor's private room
+    const io = getIo();
+    if (io) {
+      vendorIds.forEach((vendorId) => {
+        io.to(`user:${vendorId}`).emit('notification:new', {
+          type: 'new_rfq',
+          title: `New RFQ: ${equipment.name}`,
+          message: `${clientLabel} sent you an RFQ for ${equipment.name}.`,
+          rfqId: rfq.id,
+        });
+      });
+    }
 
     res.json(rfq);
   } catch (err) {
@@ -36,9 +51,7 @@ router.post('/create', authMiddleware, requireRole(['client']), async (req, res)
   }
 });
 
-
 // POST /api/rfq/create-by-category (client only)
-// Creates RFQ from a vendor category. Finds or creates an Equipment entry for the category.
 router.post('/create-by-category', authMiddleware, requireRole(['client']), async (req, res) => {
   try {
     const { category, vendorIds, specs } = req.body;
@@ -46,39 +59,24 @@ router.post('/create-by-category', authMiddleware, requireRole(['client']), asyn
       return res.status(400).json({ error: 'Missing fields: category and vendorIds required' });
     }
 
-    // Find or create an equipment entry for this category
     let [equipment] = await Equipment.findOrCreate({
       where: { name: category, category: category },
-      defaults: {
-        name: category,
-        category: category,
-        specs: specs || null,
-        certReq: false,
-        rentalPeriod: 30
-      }
+      defaults: { name: category, category: category, specs: specs || null, certReq: false, rentalPeriod: 30 }
     });
 
-    // Verify all vendorIds actually exist and are vendors
     const validVendors = await User.findAll({
       where: { id: { [Op.in]: vendorIds }, role: 'vendor' },
       attributes: ['id']
     });
-    if (validVendors.length === 0) {
-      return res.status(400).json({ error: 'No valid vendors selected' });
-    }
+    if (validVendors.length === 0) return res.status(400).json({ error: 'No valid vendors selected' });
     const validIds = validVendors.map(v => v.id);
 
-    const rfq = await RFQ.create({
-      clientId: req.user.id,
-      equipmentId: equipment.id,
-      vendors: validIds,
-      status: 'open'
-    });
+    const rfq = await RFQ.create({ clientId: req.user.id, equipmentId: equipment.id, vendors: validIds, status: 'open' });
 
-    // Notify each vendor (fire-and-forget)
     const client = await User.findByPk(req.user.id, { attributes: ['name', 'email'] });
     const clientLabel = client?.name || client?.email || 'A client';
-    Notification.bulkCreate(
+
+    await Notification.bulkCreate(
       validIds.map(vendorId => ({
         userId: vendorId,
         type: 'new_rfq',
@@ -89,55 +87,52 @@ router.post('/create-by-category', authMiddleware, requireRole(['client']), asyn
       }))
     ).catch(e => console.error('Notification error:', e));
 
+    // ← NEW: real-time push to each vendor
+    const io = getIo();
+    if (io) {
+      validIds.forEach((vendorId) => {
+        io.to(`user:${vendorId}`).emit('notification:new', {
+          type: 'new_rfq',
+          title: `New RFQ: ${equipment.name}`,
+          message: `${clientLabel} sent you an RFQ for ${equipment.name}.`,
+          rfqId: rfq.id,
+        });
+      });
+    }
+
     res.json({
       ...rfq.toJSON(),
       equipmentName: equipment.name,
       message: `RFQ sent to ${validIds.length} vendor${validIds.length !== 1 ? 's' : ''}`
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-
-// GET /api/rfqs?status=open
+// GET /api/rfq/rfqs?status=open  (unchanged)
 router.get('/rfqs', authMiddleware, async (req, res) => {
   try {
     const status = req.query.status;
     const where = {};
     if (status) where.status = status;
 
-    // Filter by role
     if (req.user.role === 'client') {
       where.clientId = req.user.id;
-    }
-    // For vendors, usually check if they are in the target list (simplified here to show Open RFQs)
-    else if (req.user.role === 'vendor') {
+    } else if (req.user.role === 'vendor') {
       where.status = 'open';
-      // In a real app, check if req.user.id is in r.vendors array
     }
 
     const rfqs = await RFQ.findAll({ where, order: [['createdAt', 'DESC']] });
 
-    // Post-filter for vendors if needed (JSON query in SQLite is tricky, doing in JS for safety)
     let visibleRfqs = rfqs;
     if (req.user.role === 'vendor') {
       visibleRfqs = rfqs.filter(r => {
-        // If vendors list is empty/null, maybe it's public? Assuming private for now.
-        // If vendors is stored as [1, 2], check inclusion.
         if (!r.vendors) return false;
-        // Handle both stringified JSON or actual array depending on DB adapter
         let vList = r.vendors;
-        if (typeof vList === 'string') {
-          try { vList = JSON.parse(vList); } catch (e) { vList = []; }
-        }
-        if (Array.isArray(vList)) {
-          // Check if vendor ID is in the list
-          // Ensure comparison matches types (string vs number)
-          return vList.map(String).includes(String(req.user.id));
-        }
+        if (typeof vList === 'string') { try { vList = JSON.parse(vList); } catch { vList = []; } }
+        if (Array.isArray(vList)) return vList.map(String).includes(String(req.user.id));
         return false;
       });
     }
@@ -149,26 +144,17 @@ router.get('/rfqs', authMiddleware, async (req, res) => {
       const bids = await Promise.all(bidsRaw.map(async (b) => {
         const vendor = await User.findByPk(b.vendorId);
         return {
-          id: b.id,
-          rfqId: b.rfqId,
-          vendorId: b.vendorId,
+          id: b.id, rfqId: b.rfqId, vendorId: b.vendorId,
           vendorName: vendor?.name || vendor?.email || 'Vendor',
-          price: parseFloat(b.price),
-          certFile: b.certFile,
-          availability: b.availability,
-          status: b.status,
-          createdAt: b.createdAt,
+          price: parseFloat(b.price), certFile: b.certFile,
+          availability: b.availability, status: b.status, createdAt: b.createdAt,
         };
       }));
       return {
-        id: r.id,
-        equipmentId: r.equipmentId,
+        id: r.id, equipmentId: r.equipmentId,
         equipmentName: equipment?.name || 'Unknown',
         clientName: client?.name || client?.email || 'Client',
-        vendors: r.vendors,
-        bids: bids || [],
-        status: r.status,
-        createdAt: r.createdAt,
+        vendors: r.vendors, bids: bids || [], status: r.status, createdAt: r.createdAt,
       };
     }));
     res.json(result);
@@ -178,15 +164,10 @@ router.get('/rfqs', authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/rfq/vendor-rfqs — RFQs addressed to the logged-in vendor
+// GET /api/rfq/vendor-rfqs (unchanged)
 router.get('/vendor-rfqs', authMiddleware, requireRole(['vendor']), async (req, res) => {
   try {
-    // Fetch all open RFQs and filter to those that include this vendor's ID
-    const allRfqs = await RFQ.findAll({
-      where: { status: 'open' },
-      order: [['createdAt', 'DESC']],
-    });
-
+    const allRfqs = await RFQ.findAll({ where: { status: 'open' }, order: [['createdAt', 'DESC']] });
     const vendorId = req.user.id;
     const myRfqs = allRfqs.filter(r => {
       let vList = r.vendors;
@@ -198,9 +179,8 @@ router.get('/vendor-rfqs', authMiddleware, requireRole(['vendor']), async (req, 
     const result = await Promise.all(myRfqs.map(async (r) => {
       const equipment = await Equipment.findByPk(r.equipmentId);
       const client = await User.findByPk(r.clientId, { attributes: ['name', 'email'] });
-      // Check if this vendor already bid on this RFQ
       const existingBid = await Bid.findOne({ where: { rfqId: r.id, vendorId } });
-      
+
       let parsedAcceptedVendors = r.acceptedVendors;
       if (typeof parsedAcceptedVendors === 'string') {
         try { parsedAcceptedVendors = JSON.parse(parsedAcceptedVendors); } catch { parsedAcceptedVendors = []; }
@@ -208,22 +188,17 @@ router.get('/vendor-rfqs', authMiddleware, requireRole(['vendor']), async (req, 
       if (!Array.isArray(parsedAcceptedVendors)) parsedAcceptedVendors = [];
 
       return {
-        id: r.id,
-        equipmentId: r.equipmentId,
+        id: r.id, equipmentId: r.equipmentId,
         equipmentName: equipment?.name || 'Unknown',
         clientName: client?.name || client?.email || 'Client',
-        status: r.status,
-        createdAt: r.createdAt,
+        status: r.status, createdAt: r.createdAt,
         acceptedVendors: parsedAcceptedVendors,
         myBid: existingBid ? {
-          id: existingBid.id,
-          price: parseFloat(existingBid.price),
-          availability: existingBid.availability,
-          status: existingBid.status,
+          id: existingBid.id, price: parseFloat(existingBid.price),
+          availability: existingBid.availability, status: existingBid.status,
         } : null,
       };
     }));
-
     res.json(result);
   } catch (err) {
     console.error(err);
@@ -231,39 +206,33 @@ router.get('/vendor-rfqs', authMiddleware, requireRole(['vendor']), async (req, 
   }
 });
 
-// GET /api/rfq/:id (detailed) - SECURED
+// GET /api/rfq/:id (unchanged)
 router.get('/:id', authMiddleware, async (req, res) => {
   try {
     const r = await RFQ.findByPk(req.params.id);
     if (!r) return res.status(404).json({ error: 'Not found' });
 
-    // Authorization Check
-    if (req.user.role === 'client' && r.clientId !== req.user.id) {
+    if (req.user.role === 'client' && r.clientId !== req.user.id)
       return res.status(403).json({ error: 'Access denied: You do not own this RFQ' });
-    }
-    
+
     if (req.user.role === 'vendor') {
       let vList = r.vendors;
-      if (typeof vList === 'string') {
-        try { vList = JSON.parse(vList); } catch (e) { vList = []; }
-      }
-      if (!Array.isArray(vList) || !vList.map(String).includes(String(req.user.id))) {
+      if (typeof vList === 'string') { try { vList = JSON.parse(vList); } catch { vList = []; } }
+      if (!Array.isArray(vList) || !vList.map(String).includes(String(req.user.id)))
         return res.status(403).json({ error: 'Access denied: You are not invited to this RFQ' });
-      }
     }
 
     const equipment = await Equipment.findByPk(r.equipmentId);
     const client = await User.findByPk(r.clientId, { attributes: ['name', 'email', 'companyName'] });
     const bids = await Bid.findAll({ where: { rfqId: r.id } });
-    
     res.json({ rfq: r, equipment, client, bids });
   } catch (err) {
-    console.error('Fetch RFQ detail error:', err);
+    console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// POST /api/rfq/:id/accept — Vendor accepts the RFQ
+// POST /api/rfq/:id/accept (vendor)
 router.post('/:id/accept', authMiddleware, requireRole(['vendor']), async (req, res) => {
   try {
     const rfq = await RFQ.findByPk(req.params.id);
@@ -278,6 +247,17 @@ router.post('/:id/accept', authMiddleware, requireRole(['vendor']), async (req, 
       accepted.push(vendorId);
       rfq.acceptedVendors = JSON.stringify(accepted);
       await rfq.save();
+    }
+
+    // ← NEW: notify client that their RFQ was accepted by a vendor
+    const io = getIo();
+    if (io) {
+      io.to(`user:${rfq.clientId}`).emit('rfq:accepted', {
+        rfqId: rfq.id,
+        vendorId,
+        vendorName: req.user.name,
+        message: `${req.user.name} accepted your RFQ #${rfq.id}.`,
+      });
     }
 
     res.json({ success: true, acceptedVendors: accepted });
