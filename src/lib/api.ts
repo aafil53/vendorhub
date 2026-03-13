@@ -42,6 +42,14 @@ const api = {
     });
     return { data: await handleResponse(response) };
   },
+  patch: async (url: string, data?: unknown) => {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'PATCH',
+      headers: getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return { data: await handleResponse(response) };
+  },
 
   delete: async (url: string) => {
     const response = await fetch(`${API_BASE_URL}${url}`, {

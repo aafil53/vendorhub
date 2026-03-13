@@ -1,18 +1,34 @@
-import { Truck, CheckCircle2, Clock, XCircle, Package, DollarSign, Loader2 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import {
+  Truck, CheckCircle2, Clock, XCircle, Package,
+  DollarSign, Loader2, CheckCheck, Ban
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import api from '@/lib/api';
+import { jwtDecode } from 'jwt-decode';
 
-const STATUS_CONFIG: Record<string, { icon: React.ElementType; color: string; bg: string; dot: string }> = {
-  pending:   { icon: Clock,        color: 'text-amber-400',   bg: 'bg-amber-400/10',   dot: 'bg-amber-400'   },
-  completed: { icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-400/10', dot: 'bg-emerald-400' },
-  cancelled: { icon: XCircle,      color: 'text-red-400',     bg: 'bg-red-400/10',     dot: 'bg-red-400'     },
+// ── helpers ───────────────────────────────────────────────────────────────────
+function getUserRole(): string {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return 'client';
+    const d: any = jwtDecode(token);
+    return d.role || 'client';
+  } catch { return 'client'; }
+}
+
+const STATUS_CONFIG: Record<string, { label: string; dot: string; text: string; bg: string }> = {
+  pending:   { label: 'Pending',   dot: 'bg-amber-400',   text: 'text-amber-700',   bg: 'bg-amber-50'   },
+  completed: { label: 'Completed', dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50' },
+  cancelled: { label: 'Cancelled', dot: 'bg-red-400',     text: 'text-red-700',     bg: 'bg-red-50'     },
 };
 
+// ── component ─────────────────────────────────────────────────────────────────
 export function OrderHistory() {
+  const queryClient = useQueryClient();
+  const userRole = getUserRole();
+
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['orders'],
     queryFn: async () => {
@@ -21,146 +37,272 @@ export function OrderHistory() {
     },
   });
 
-  const totalValue = orders.reduce((sum: number, o: any) => sum + (Number(o.bid?.price) || 0), 0);
-  const completed = orders.filter((o: any) => o.status === 'completed').length;
-  const pending = orders.filter((o: any) => o.status === 'pending').length;
+  // ── Mark Complete ──────────────────────────────────────────────────────────
+  const completeMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const { data } = await api.patch(`/orders/${orderId}/complete`);
+      return data;
+    },
+    onSuccess: (_, orderId) => {
+      toast.success('Order marked as completed!');
+      // Invalidate orders list AND vendor score cache so scores update immediately
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['vendor-scores-batch'] });
+      queryClient.invalidateQueries({ queryKey: ['vendor-scores'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Failed to complete order');
+    },
+  });
 
+  // ── Cancel ────────────────────────────────────────────────────────────────
+  const cancelMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const { data } = await api.patch(`/orders/${orderId}/cancel`);
+      return data;
+    },
+    onSuccess: () => {
+      toast.success('Order cancelled');
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      queryClient.invalidateQueries({ queryKey: ['vendor-scores-batch'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Failed to cancel order');
+    },
+  });
+
+  // ── derived stats ──────────────────────────────────────────────────────────
+  const totalValue  = orders.reduce((sum: number, o: any) => sum + (Number(o.bid?.price) || 0), 0);
+  const pending     = orders.filter((o: any) => o.status === 'pending').length;
+  const completed   = orders.filter((o: any) => o.status === 'completed').length;
+
+  const isActionPending = completeMutation.isPending || cancelMutation.isPending;
+
+  // ── render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
 
-      {/* ── KPI Strip ──────────────────────────────────────────────────────── */}
-      <div className="grid gap-4 md:grid-cols-4 animate-reveal">
+      {/* ── KPI strip — matching admin dashboard style ───────────────────── */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Total Orders',    value: orders.length,                      icon: Package,      color: 'text-blue-400',    bg: 'bg-blue-400/10'    },
-          { label: 'Pending',         value: pending,                             icon: Clock,        color: 'text-amber-400',   bg: 'bg-amber-400/10'   },
-          { label: 'Completed',       value: completed,                           icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-          { label: 'Total Value',     value: `$${totalValue.toLocaleString()}`,   icon: DollarSign,   color: 'text-violet-400',  bg: 'bg-violet-400/10'  },
+          { label: 'Total Orders', value: orders.length,               accent: '#3b82f6', icon: Package      },
+          { label: 'Pending',      value: pending,                      accent: '#f59e0b', icon: Clock        },
+          { label: 'Completed',    value: completed,                    accent: '#10b981', icon: CheckCircle2 },
+          { label: 'Total Value',  value: `$${totalValue.toLocaleString()}`, accent: '#8b5cf6', icon: DollarSign  },
         ].map(s => (
-          <Card key={s.label} className="glass border-none ring-1 ring-white/10 overflow-hidden group">
-            <CardContent className="flex items-center gap-4 p-5 relative">
-              <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${s.bg} ${s.color} group-hover:scale-110 transition-transform duration-300 shrink-0`}>
-                <s.icon className="h-5 w-5" />
+          <div
+            key={s.label}
+            className="bg-white rounded-xl border border-gray-100 shadow-sm flex items-stretch overflow-hidden"
+          >
+            <div className="w-1 shrink-0" style={{ backgroundColor: s.accent }} />
+            <div className="flex items-center gap-4 px-5 py-4 flex-1">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ backgroundColor: s.accent + '18' }}
+              >
+                <s.icon className="h-5 w-5" style={{ color: s.accent }} />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/40">{s.label}</p>
-                <p className={`text-2xl font-black tracking-tighter mt-0.5 ${s.color}`}>{s.value}</p>
+                <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">{s.label}</p>
+                <p className="text-2xl font-bold text-gray-900 leading-tight mt-0.5">{s.value}</p>
               </div>
-              <div className={`absolute -right-3 -top-3 w-16 h-16 ${s.bg} blur-2xl rounded-full opacity-60`} />
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ))}
       </div>
 
-      {/* ── Table ──────────────────────────────────────────────────────────── */}
-      <Card className="glass border-none ring-1 ring-white/10 overflow-hidden animate-reveal delay-100">
-        <CardHeader className="px-8 py-5 border-b border-white/5 bg-white/3 flex-row items-center justify-between space-y-0">
+      {/* ── Client hint banner (only shown when pending orders exist) ───────── */}
+      {userRole === 'client' && pending > 0 && (
+        <div className="flex items-start gap-3 rounded-xl bg-blue-50 border border-blue-100 px-4 py-3">
+          <CheckCheck className="h-4 w-4 text-blue-500 mt-0.5 shrink-0" />
+          <p className="text-sm text-blue-700">
+            <span className="font-semibold">Mark orders as complete</span> once the vendor has
+            delivered. This confirms payment and updates the vendor's performance score.
+          </p>
+        </div>
+      )}
+
+      {/* ── Table ───────────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
           <div>
-            <CardTitle className="text-base font-black tracking-tight">Purchase Orders</CardTitle>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/30 mt-0.5">
+            <h3 className="font-bold text-gray-900">Purchase Orders</h3>
+            <p className="text-xs text-gray-400 mt-0.5">
               {isLoading ? 'Loading...' : `${orders.length} total orders`}
             </p>
           </div>
-        </CardHeader>
+        </div>
 
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="flex h-48 items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-amber-400" />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-b border-white/5 hover:bg-transparent">
-                    {['PO Number', 'Equipment', 'Vendor', 'Value', 'Date', 'Status'].map(h => (
-                      <TableHead key={h} className={cn(
-                        'font-black text-[10px] uppercase tracking-widest text-muted-foreground/40 h-11',
-                        h === 'PO Number' && 'pl-8',
-                        h === 'Status' && 'pr-8 text-right'
-                      )}>
-                        {h}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
+        {isLoading ? (
+          <div className="flex h-48 items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-violet-500" />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-50">
+                  {[
+                    'PO Number', 'Equipment', 'Vendor', 'Value', 'Date', 'Status',
+                    // Only clients see the Actions column
+                    ...(userRole === 'client' ? ['Actions'] : []),
+                  ].map(h => (
+                    <th
+                      key={h}
+                      className={cn(
+                        'text-left text-xs font-semibold text-gray-400 uppercase tracking-wide px-6 py-3',
+                        h === 'Actions' && 'text-right'
+                      )}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
 
-                <TableBody>
-                  {orders.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="h-48 text-center">
-                        <div className="flex flex-col items-center gap-3 text-muted-foreground/30">
-                          <Package className="h-10 w-10 opacity-20" />
-                          <p className="font-bold">No orders yet</p>
-                          <p className="text-xs">Orders appear here once you award a bid.</p>
+              <tbody className="divide-y divide-gray-50">
+                {orders.length === 0 ? (
+                  <tr>
+                    <td colSpan={userRole === 'client' ? 7 : 6} className="text-center py-16">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="h-12 w-12 rounded-xl bg-gray-50 flex items-center justify-center">
+                          <Package className="h-6 w-6 text-gray-300" />
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    orders.map((order: any) => {
-                      const sc = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
-                      const StatusIcon = sc.icon;
-                      return (
-                        <TableRow key={order.id} className="border-b border-white/5 hover:bg-white/3 transition-colors group">
-                          {/* PO # */}
-                          <TableCell className="pl-8 py-4">
-                            <span className="font-mono text-xs font-black text-muted-foreground/50 group-hover:text-amber-400 transition-colors">
-                              {order.poDetails?.poNumber || `PO-${String(order.id).padStart(4, '0')}`}
-                            </span>
-                          </TableCell>
+                        <p className="text-sm font-medium text-gray-400">No orders yet</p>
+                        <p className="text-xs text-gray-400">Orders appear here once you award a bid.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  orders.map((order: any) => {
+                    const sc = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
+                    const isPending = order.status === 'pending';
+                    const isThisCompleting = completeMutation.isPending && completeMutation.variables === order.id;
+                    const isThisCancelling = cancelMutation.isPending && cancelMutation.variables === order.id;
 
-                          {/* Equipment */}
-                          <TableCell className="py-4">
-                            <p className="font-bold text-sm text-foreground">
-                              {order.bid?.rfq?.equipment?.name || '—'}
-                            </p>
-                          </TableCell>
+                    return (
+                      <tr
+                        key={order.id}
+                        className={cn(
+                          'group transition-colors',
+                          order.status === 'completed' ? 'bg-emerald-50/30' : 'hover:bg-gray-50/50'
+                        )}
+                      >
+                        {/* PO Number */}
+                        <td className="px-6 py-4">
+                          <span className="font-mono text-xs font-semibold text-gray-500 group-hover:text-violet-600 transition-colors">
+                            {order.poDetails?.poNumber || `PO-${String(order.id).padStart(4,'0')}`}
+                          </span>
+                        </td>
 
-                          {/* Vendor */}
-                          <TableCell className="py-4">
-                            <div className="flex items-center gap-2.5">
-                              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/5 text-[10px] font-black text-muted-foreground/50">
-                                {(order.vendor?.name || '?').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
-                              </div>
-                              <span className="text-sm font-semibold text-muted-foreground/70">
-                                {order.vendor?.name || '—'}
-                              </span>
+                        {/* Equipment */}
+                        <td className="px-6 py-4">
+                          <p className="font-semibold text-gray-900 text-sm">
+                            {order.bid?.rfq?.equipment?.name || '—'}
+                          </p>
+                        </td>
+
+                        {/* Vendor */}
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 text-[10px] font-bold text-gray-500">
+                              {(order.vendor?.name || '?').split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()}
                             </div>
-                          </TableCell>
-
-                          {/* Value */}
-                          <TableCell className="py-4">
-                            <span className="font-black text-sm text-foreground">
-                              ${Number(order.bid?.price || 0).toLocaleString()}
+                            <span className="text-sm text-gray-700 font-medium">
+                              {order.vendor?.name || '—'}
                             </span>
-                          </TableCell>
+                          </div>
+                        </td>
 
-                          {/* Date */}
-                          <TableCell className="py-4 text-[11px] font-semibold text-muted-foreground/40 font-mono">
-                            {new Date(order.createdAt).toLocaleDateString('en-GB', {
-                              day: '2-digit', month: 'short', year: '2-digit'
-                            }).toUpperCase()}
-                          </TableCell>
+                        {/* Value */}
+                        <td className="px-6 py-4">
+                          <span className="font-bold text-sm text-gray-900">
+                            ${Number(order.bid?.price || 0).toLocaleString()}
+                          </span>
+                        </td>
 
-                          {/* Status */}
-                          <TableCell className="py-4 text-right pr-8">
-                            <span className={cn(
-                              'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-wider',
-                              sc.bg, sc.color
-                            )}>
-                              <span className={cn('h-1.5 w-1.5 rounded-full', sc.dot)} />
-                              {order.status}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                        {/* Date */}
+                        <td className="px-6 py-4 text-xs text-gray-400">
+                          {new Date(order.createdAt).toLocaleDateString('en-GB', {
+                            day: '2-digit', month: 'short', year: '2-digit',
+                          })}
+                        </td>
+
+                        {/* Status badge */}
+                        <td className="px-6 py-4">
+                          <span className={cn(
+                            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold capitalize',
+                            sc.bg, sc.text
+                          )}>
+                            <span className={cn('h-1.5 w-1.5 rounded-full', sc.dot)} />
+                            {sc.label}
+                          </span>
+                        </td>
+
+                        {/* Actions — client only, pending orders only ──────── */}
+                        {userRole === 'client' && (
+                          <td className="px-6 py-4 text-right">
+                            {isPending ? (
+                              <div className="flex items-center justify-end gap-2">
+                                {/* Mark Complete */}
+                                <button
+                                  onClick={() => completeMutation.mutate(order.id)}
+                                  disabled={isActionPending}
+                                  title="Mark this order as completed"
+                                  className={cn(
+                                    'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-all shadow-sm',
+                                    'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-100',
+                                    'disabled:opacity-50 disabled:cursor-not-allowed'
+                                  )}
+                                >
+                                  {isThisCompleting ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <CheckCheck className="h-3.5 w-3.5" />
+                                  )}
+                                  Complete
+                                </button>
+
+                                {/* Cancel */}
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`Cancel order ${order.poDetails?.poNumber}? This cannot be undone.`)) {
+                                      cancelMutation.mutate(order.id);
+                                    }
+                                  }}
+                                  disabled={isActionPending}
+                                  title="Cancel this order"
+                                  className={cn(
+                                    'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-semibold transition-all',
+                                    'bg-gray-100 hover:bg-red-50 text-gray-500 hover:text-red-600',
+                                    'disabled:opacity-50 disabled:cursor-not-allowed'
+                                  )}
+                                >
+                                  {isThisCancelling ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Ban className="h-3.5 w-3.5" />
+                                  )}
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              // Completed / cancelled — show nothing actionable
+                              <span className="text-xs text-gray-300">—</span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
