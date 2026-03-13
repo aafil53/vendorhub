@@ -22,6 +22,13 @@ node --version  # Should be v18+ or v20+
 
 ## 🚀 **1-Click Setup (Copy-Paste All)**
 
+## 🧭 Beginner Command-Only Setup
+
+For a strict command-by-command guide (ideal for first-time users), use:
+
+- `BEGINNER_SETUP_COMMANDS.md`
+
+
 ### **Step 1: Clone & Install**
 ```powershell
 git clone https://github.com/aafil53/vendorhub.git
