@@ -13,6 +13,7 @@ const io = socketIo(server, { cors: { origin: ['http://localhost:5173'] } });
 
 // ── NEW: register io singleton so routes can emit ─────────────────────────────
 const { setIo } = require('./socket');
+const { startRfqAutoClose } = require('./cron/rfqAutoClose');
 setIo(io);
 
 const { authMiddleware } = require('./middleware/auth');
@@ -75,8 +76,9 @@ const PORT = process.env.PORT || 5000;
   try {
     await sequelize.authenticate();
     console.log('Database connection established.');
-    await sequelize.sync();
+    await sequelize.sync({ alter: true });
     console.log('Models synchronized.');
+    startRfqAutoClose(); // start after DB is ready
     server.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
     });

@@ -1,3 +1,4 @@
+// src/components/orders/OrderHistory.tsx
 import {
   Truck, CheckCircle2, Clock, XCircle, Package,
   DollarSign, Loader2, CheckCheck, Ban
@@ -43,15 +44,16 @@ export function OrderHistory() {
       const { data } = await api.patch(`/orders/${orderId}/complete`);
       return data;
     },
-    onSuccess: (_, orderId) => {
+    onSuccess: () => {
       toast.success('Order marked as completed!');
-      // Invalidate orders list AND vendor score cache so scores update immediately
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['vendor-scores-batch'] });
-      queryClient.invalidateQueries({ queryKey: ['vendor-scores'] });
+      try {
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+        queryClient.invalidateQueries({ queryKey: ['vendor-scores-batch'] });
+        queryClient.invalidateQueries({ queryKey: ['vendor-scores'] });
+      } catch (_) { /* cache invalidation is best-effort */ }
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error || 'Failed to complete order');
+      toast.error(err?.message || 'Failed to complete order');
     },
   });
 
@@ -63,11 +65,13 @@ export function OrderHistory() {
     },
     onSuccess: () => {
       toast.success('Order cancelled');
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['vendor-scores-batch'] });
+      try {
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+        queryClient.invalidateQueries({ queryKey: ['vendor-scores-batch'] });
+      } catch (_) { /* best-effort */ }
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error || 'Failed to cancel order');
+      toast.error(err?.message || 'Failed to cancel order');
     },
   });
 

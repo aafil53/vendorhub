@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Star, Mail, Phone, Check, Send, Loader2, AlertCircle,
-  ArrowLeft, Shield, Users, ChevronRight, ArrowUpDown, SlidersHorizontal
+  ArrowLeft, Shield, Users, ChevronRight, ArrowUpDown, SlidersHorizontal, Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -26,6 +26,7 @@ export function VendorSelection({ category, equipmentName, equipmentId, onSendRF
   const [selectedVendors, setSelectedVendors] = useState<number[]>([]);
   const [sortBy, setSortBy]       = useState<SortKey>('score');
   const [gradeFilter, setGradeFilter] = useState<GradeFilter>('all');
+  const [deadline, setDeadline]   = useState<string>('');
   const queryClient = useQueryClient();
 
   // ── Vendor list ────────────────────────────────────────────────────────────
@@ -77,10 +78,10 @@ export function VendorSelection({ category, equipmentName, equipmentId, onSendRF
   const sendRFQMutation = useMutation({
     mutationFn: async (vendorIds: number[]) => {
       if (equipmentId) {
-        const { data } = await api.post('/rfq/create', { equipmentId, vendorIds });
+        const { data } = await api.post('/rfq/create', { equipmentId, vendorIds, deadline: deadline || undefined });
         return data;
       } else {
-        const { data } = await api.post('/rfq/create-by-category', { category, vendorIds, specs: equipmentName || category });
+        const { data } = await api.post('/rfq/create-by-category', { category, vendorIds, specs: equipmentName || category, deadline: deadline || undefined });
         return data;
       }
     },
@@ -151,6 +152,39 @@ export function VendorSelection({ category, equipmentName, equipmentId, onSendRF
             <p className={cn('text-sm font-bold', i === 2 && selectedVendors.length > 0 ? 'text-violet-600' : 'text-gray-900')}>{s.value}</p>
           </div>
         ))}
+      </div>
+
+      {/* ── Deadline picker (optional) ───────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-5 py-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-violet-500 shrink-0" />
+            <span className="text-sm font-semibold text-gray-700">Bid Deadline</span>
+            <span className="text-xs text-gray-400">(optional)</span>
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <input
+              type="datetime-local"
+              value={deadline}
+              min={new Date(Date.now() + 3_600_000).toISOString().slice(0, 16)}
+              onChange={e => setDeadline(e.target.value)}
+              className="h-9 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 transition-all"
+            />
+            {deadline && (
+              <button
+                onClick={() => setDeadline('')}
+                className="h-9 px-3 rounded-lg text-xs text-gray-400 hover:text-red-500 hover:bg-red-50 transition-all border border-gray-200"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {deadline && (
+            <p className="w-full text-xs text-violet-600 font-medium mt-1">
+              Vendors must bid before {new Date(deadline).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}. RFQ auto-closes after this time.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* ── Controls: sort + grade filter ───────────────────────────────── */}

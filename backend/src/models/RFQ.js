@@ -25,9 +25,15 @@ const RFQ = sequelize.define('RFQ', {
     defaultValue: [],
   },
   status: {
-    type: DataTypes.ENUM('open','closed','awarded','cancelled'),
+    type: DataTypes.ENUM('open', 'closed', 'awarded', 'cancelled'),
     allowNull: false,
     defaultValue: 'open',
+  },
+  // Optional bid deadline — cron auto-closes RFQ when this passes
+  deadline: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    defaultValue: null,
   },
 });
 

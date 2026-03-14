@@ -1,23 +1,86 @@
+// src/pages/VendorDashboard.tsx
 import { useAuth } from '@/contexts/AuthContext'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import {
   Star, Phone, Building2, FileCheck, Users, PackageCheck, Edit,
   Bell, ClipboardList, Send, Clock, CheckCircle2, Loader2,
-  Wifi, WifiOff, TrendingUp, BarChart3, RefreshCw
+  Wifi, WifiOff, AlertTriangle, LogOut
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { useNavigate } from 'react-router-dom'
-import { Progress } from '@/components/ui/progress'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { BidSubmissionModal } from '@/components/bidding/BidSubmissionModal'
 import { toast } from 'sonner'
 import { useSocket } from '@/hooks/useSocket'
 import { cn } from '@/lib/utils'
-import { LogOut } from 'lucide-react'
 
+// ── Countdown hook ────────────────────────────────────────────────────────────
+function useCountdown(deadline: string | null | undefined) {
+  const getRemaining = useCallback(() => {
+    if (!deadline) return null;
+    const diff = new Date(deadline).getTime() - Date.now();
+    if (diff <= 0) return { expired: true, days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 };
+    const days    = Math.floor(diff / 86_400_000);
+    const hours   = Math.floor((diff % 86_400_000) / 3_600_000);
+    const minutes = Math.floor((diff % 3_600_000)  / 60_000);
+    const seconds = Math.floor((diff % 60_000)     / 1_000);
+    return { expired: false, days, hours, minutes, seconds, total: diff };
+  }, [deadline]);
+
+  const [remaining, setRemaining] = useState(getRemaining);
+
+  useEffect(() => {
+    if (!deadline) return;
+    setRemaining(getRemaining());
+    const id = setInterval(() => setRemaining(getRemaining()), 1_000);
+    return () => clearInterval(id);
+  }, [deadline, getRemaining]);
+
+  return remaining;
+}
+
+// ── CountdownBadge component ──────────────────────────────────────────────────
+function CountdownBadge({ deadline }: { deadline: string | null | undefined }) {
+  const r = useCountdown(deadline);
+  if (!deadline || !r) return null;
+
+  if (r.expired) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-400/10 border border-red-400/20 px-2.5 py-1 text-[10px] font-black text-red-400 uppercase tracking-wide">
+        <AlertTriangle className="h-2.5 w-2.5" /> Expired
+      </span>
+    );
+  }
+
+  const isUrgent  = r.total < 3_600_000;   // < 1 hour
+  const isWarning = r.total < 86_400_000;  // < 1 day
+
+  const colorClass = isUrgent
+    ? 'bg-red-400/10 border-red-400/20 text-red-400'
+    : isWarning
+      ? 'bg-amber-400/10 border-amber-400/20 text-amber-400'
+      : 'bg-emerald-400/10 border-emerald-400/20 text-emerald-400';
+
+  const label = r.days > 0
+    ? `${r.days}d ${r.hours}h left`
+    : r.hours > 0
+      ? `${r.hours}h ${r.minutes}m left`
+      : `${r.minutes}m ${r.seconds}s left`;
+
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide',
+      colorClass
+    )}>
+      <Clock className="h-2.5 w-2.5" />
+      {label}
+    </span>
+  );
+}
+
+// ── Interfaces ────────────────────────────────────────────────────────────────
 interface UserProfile {
   companyName: string
   phone: string
@@ -34,6 +97,7 @@ const BID_STATUS: Record<string, { color: string; bg: string; dot: string }> = {
   pending:  { color: 'text-amber-400',   bg: 'bg-amber-400/10',   dot: 'bg-amber-400'   },
 }
 
+// ── Main component ────────────────────────────────────────────────────────────
 export default function VendorDashboard() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -41,60 +105,73 @@ export default function VendorDashboard() {
   const token = localStorage.getItem('token')
   const { socket, connected } = useSocket()
 
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [selectedRfq, setSelectedRfq] = useState<any>(null)
+  const [profile, setProfile]           = useState<UserProfile | null>(null)
+  const [selectedRfq, setSelectedRfq]   = useState<any>(null)
   const [bidModalOpen, setBidModalOpen] = useState(false)
+  const [isInboxOpen, setIsInboxOpen]   = useState(true)
 
+  // Profile fetch
   useEffect(() => {
     fetch('http://localhost:5000/api/auth/profile', {
       headers: { Authorization: `Bearer ${token}` },
     }).then(r => r.json()).then(setProfile).catch(() => {})
   }, [])
 
-  // Socket: live updates
+  // Socket events
   useEffect(() => {
-    if (!socket) return
-    socket.on('notification:new', () => {
-      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
-      queryClient.invalidateQueries({ queryKey: ['notif-count'] })
+    if (!socket) return;
+    const onNewRfq = () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] });
+      queryClient.invalidateQueries({ queryKey: ['notif-count'] });
       toast.success('New RFQ arrived!', {
         action: { label: 'View', onClick: () => setIsInboxOpen(true) },
-      })
-    })
-    socket.on('order:created', () => {
-      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
-      toast.success('🎉 A purchase order was placed on your bid!')
-    })
-    return () => { socket.off('notification:new'); socket.off('order:created') }
-  }, [socket])
+      });
+    };
+    const onOrderCreated = () => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] });
+      toast.success('🎉 A purchase order was placed on your bid!');
+    };
+    const onRfqExpired = (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] });
+      queryClient.invalidateQueries({ queryKey: ['notif-count'] });
+      toast.warning(data?.message || 'An RFQ has expired and been closed.', { duration: 6000 });
+    };
+    socket.on('notification:new',  onNewRfq);
+    socket.on('order:created',     onOrderCreated);
+    socket.on('rfq:expired',       onRfqExpired);
+    return () => {
+      socket.off('notification:new',  onNewRfq);
+      socket.off('order:created',     onOrderCreated);
+      socket.off('rfq:expired',       onRfqExpired);
+    };
+  }, [socket]);
 
-  const [isInboxOpen, setIsInboxOpen] = useState(true)
-
+  // Queries
   const { data: vendorRfqs = [], isLoading: rfqLoading } = useQuery({
     queryKey: ['vendor-rfqs'],
-    queryFn: async () => { const { data } = await api.get('/rfq/vendor-rfqs'); return data },
-  })
+    queryFn: async () => { const { data } = await api.get('/rfq/vendor-rfqs'); return data; },
+  });
 
   const { data: notifData } = useQuery({
     queryKey: ['notif-count'],
-    queryFn: async () => { const { data } = await api.get('/notifications/unread-count'); return data },
-  })
+    queryFn: async () => { const { data } = await api.get('/notifications/unread-count'); return data; },
+  });
 
   const markAllRead = useMutation({
     mutationFn: () => api.patch('/notifications/mark-all-read'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notif-count'] }),
-  })
+    onSuccess:  () => queryClient.invalidateQueries({ queryKey: ['notif-count'] }),
+  });
 
   const acceptRfq = useMutation({
     mutationFn: (id: number) => api.post(`/rfq/${id}/accept`),
-    onSuccess: () => {
-      toast.success('RFQ Accepted')
-      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
+    onSuccess:  () => {
+      toast.success('RFQ Accepted');
+      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] });
     },
-    onError: () => toast.error('Failed to accept RFQ'),
-  })
+    onError: (err: any) => toast.error(err?.message || 'Failed to accept RFQ'),
+  });
 
-  const unreadCount: number = notifData?.count || 0
+  const unreadCount: number = notifData?.count || 0;
 
   if (!profile) return (
     <div className="flex h-screen items-center justify-center bg-background">
@@ -103,32 +180,31 @@ export default function VendorDashboard() {
         <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/40">Loading profile…</p>
       </div>
     </div>
-  )
+  );
 
   const calculateCompletion = () => {
-    let score = 0
-    if (profile.companyName) score += 20
-    if (profile.phone) score += 15
-    if (profile.categories?.length > 0) score += 20
-    if (profile.rating > 0) score += 15
-    if (profile.certifications?.length > 0) score += 15
-    if (profile.experienceYears > 0) score += 15
-    return Math.min(score, 100)
-  }
-  const completion = calculateCompletion()
+    let score = 0;
+    if (profile.companyName)                score += 20;
+    if (profile.phone)                      score += 15;
+    if (profile.categories?.length > 0)     score += 20;
+    if (profile.rating > 0)                 score += 15;
+    if (profile.certifications?.length > 0) score += 15;
+    if (profile.experienceYears > 0)        score += 15;
+    return Math.min(score, 100);
+  };
+  const completion = calculateCompletion();
 
   const openBidModal = (rfq: any) => {
-    setSelectedRfq(rfq)
-    setBidModalOpen(true)
-    if (unreadCount > 0) markAllRead.mutate()
-  }
+    setSelectedRfq(rfq);
+    setBidModalOpen(true);
+    if (unreadCount > 0) markAllRead.mutate();
+  };
 
   return (
     <div className="min-h-screen bg-background selection:bg-indigo-400/20">
 
-      {/* ── Header ──────────────────────────────────────────────────────────── */}
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 flex h-16 items-center justify-between border-b border-white/5 bg-background/80 backdrop-blur-xl px-6">
-        {/* Logo */}
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500 shadow-lg shadow-indigo-500/30">
             <Building2 className="h-5 w-5 text-white" />
@@ -139,9 +215,7 @@ export default function VendorDashboard() {
           </div>
         </div>
 
-        {/* Right controls */}
         <div className="flex items-center gap-3">
-          {/* Live indicator */}
           <div className={cn(
             'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-black uppercase tracking-wider border',
             connected
@@ -152,7 +226,6 @@ export default function VendorDashboard() {
             {connected ? 'Live' : 'Offline'}
           </div>
 
-          {/* Bell */}
           <button className="relative flex h-9 w-9 items-center justify-center rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
             <Bell className="h-4 w-4 text-muted-foreground" />
             {unreadCount > 0 && (
@@ -168,9 +241,7 @@ export default function VendorDashboard() {
           </div>
 
           <Button
-            variant="ghost"
-            size="sm"
-            onClick={logout}
+            variant="ghost" size="sm" onClick={logout}
             className="h-9 px-3 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/20 transition-all font-black text-xs"
           >
             <LogOut className="h-3.5 w-3.5 mr-1.5" />Logout
@@ -180,10 +251,10 @@ export default function VendorDashboard() {
 
       <div className="container mx-auto p-6 space-y-6 max-w-6xl">
 
-        {/* ── Stats row ─────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-reveal">
+        {/* ── Stats row ───────────────────────────────────────────────────── */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Open RFQs',   value: vendorRfqs.length,      icon: ClipboardList, color: 'text-indigo-400',  bg: 'bg-indigo-400/10'  },
+            { label: 'Open RFQs',   value: vendorRfqs.length,     icon: ClipboardList, color: 'text-indigo-400',  bg: 'bg-indigo-400/10'  },
             { label: 'New Alerts',  value: unreadCount,             icon: Bell,          color: 'text-red-400',     bg: 'bg-red-400/10'     },
             { label: 'Orders Done', value: profile.ordersCount||0,  icon: PackageCheck,  color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
             { label: 'Rating',      value: profile.rating||0,       icon: Star,          color: 'text-amber-400',   bg: 'bg-amber-400/10'   },
@@ -191,7 +262,7 @@ export default function VendorDashboard() {
             <Card key={s.label} className="glass border-none ring-1 ring-white/10 overflow-hidden group">
               <CardContent className="flex items-center gap-3 p-4 relative">
                 <div className={`flex h-10 w-10 items-center justify-center rounded-xl shrink-0 ${s.bg} ${s.color} group-hover:scale-110 transition-transform`}>
-                  <s.icon className="h-4.5 w-4.5" />
+                  <s.icon className="h-4 w-4" />
                 </div>
                 <div>
                   <p className="text-[9px] uppercase tracking-widest font-black text-muted-foreground/40">{s.label}</p>
@@ -203,12 +274,12 @@ export default function VendorDashboard() {
           ))}
         </div>
 
-        {/* ── RFQ Inbox ─────────────────────────────────────────────────────── */}
-        <Card className="glass border-none ring-1 ring-white/10 overflow-hidden animate-reveal delay-100">
+        {/* ── RFQ Inbox ───────────────────────────────────────────────────── */}
+        <Card className="glass border-none ring-1 ring-white/10 overflow-hidden">
           <CardHeader className="px-6 py-4 border-b border-white/5 bg-white/3 flex-row items-center justify-between space-y-0">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-400/10">
-                <ClipboardList className="h-4.5 w-4.5 text-indigo-400" />
+                <ClipboardList className="h-4 w-4 text-indigo-400" />
               </div>
               <div>
                 <CardTitle className="text-sm font-black tracking-tight">RFQ Inbox</CardTitle>
@@ -224,8 +295,7 @@ export default function VendorDashboard() {
                 </span>
               )}
               <Button
-                variant="ghost"
-                size="sm"
+                variant="ghost" size="sm"
                 onClick={() => setIsInboxOpen(p => !p)}
                 className="h-8 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-muted-foreground hover:text-foreground font-black text-[11px] border border-white/10"
               >
@@ -249,14 +319,17 @@ export default function VendorDashboard() {
               ) : (
                 <div className="divide-y divide-white/5">
                   {vendorRfqs.map((rfq: any) => {
-                    const bs = rfq.myBid ? BID_STATUS[rfq.myBid.status] || BID_STATUS.pending : null
+                    const bs = rfq.myBid ? BID_STATUS[rfq.myBid.status] || BID_STATUS.pending : null;
                     const isAccepted = Array.isArray(rfq.acceptedVendors) &&
-                      rfq.acceptedVendors.some((v: any) => String(v) === String(user?.id))
+                      rfq.acceptedVendors.some((v: any) => String(v) === String(user?.id));
 
                     return (
-                      <div key={rfq.id} className="group flex items-center gap-4 px-6 py-4 hover:bg-white/3 transition-colors">
+                      <div
+                        key={rfq.id}
+                        className="group flex items-center gap-4 px-6 py-4 hover:bg-white/3 transition-colors"
+                      >
                         {/* Icon */}
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-400/10 text-xl">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-400/10 text-xl select-none">
                           🏗️
                         </div>
 
@@ -270,13 +343,17 @@ export default function VendorDashboard() {
                               #{String(rfq.id).padStart(4, '0')}
                             </span>
                           </div>
-                          <p className="text-xs text-muted-foreground/40 mt-0.5">
-                            From <span className="text-muted-foreground/60 font-semibold">{rfq.clientName}</span>
-                            <span className="ml-2 inline-flex items-center gap-1">
-                              <Clock className="h-3 w-3" />
-                              {new Date(rfq.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </span>
-                          </p>
+                          <div className="flex items-center gap-3 mt-1 flex-wrap">
+                            <p className="text-xs text-muted-foreground/40">
+                              From <span className="text-muted-foreground/60 font-semibold">{rfq.clientName}</span>
+                              <span className="ml-2 inline-flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {new Date(rfq.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </span>
+                            </p>
+                            {/* ── Live countdown badge ───────────────────── */}
+                            <CountdownBadge deadline={rfq.deadline} />
+                          </div>
                         </div>
 
                         {/* Action / Status */}
@@ -299,8 +376,7 @@ export default function VendorDashboard() {
                             </Button>
                           ) : (
                             <Button
-                              size="sm"
-                              variant="outline"
+                              size="sm" variant="outline"
                               onClick={() => acceptRfq.mutate(rfq.id)}
                               disabled={acceptRfq.isPending}
                               className="h-8 px-4 gap-1.5 bg-white/5 hover:bg-indigo-400/10 text-indigo-400 border-indigo-400/20 font-black text-[11px] rounded-xl transition-all"
@@ -310,7 +386,7 @@ export default function VendorDashboard() {
                           )}
                         </div>
                       </div>
-                    )
+                    );
                   })}
                 </div>
               )}
@@ -318,10 +394,9 @@ export default function VendorDashboard() {
           )}
         </Card>
 
-        {/* ── Profile + Categories/Certs ─────────────────────────────────────── */}
-        <div className="grid md:grid-cols-3 gap-6 animate-reveal delay-200">
+        {/* ── Profile + Categories/Certs ──────────────────────────────────── */}
+        <div className="grid md:grid-cols-3 gap-6">
 
-          {/* Profile card */}
           <Card className="glass border-none ring-1 ring-white/10 overflow-hidden md:col-span-1">
             <CardContent className="p-6 flex flex-col items-center text-center gap-4 relative">
               <button
@@ -331,19 +406,15 @@ export default function VendorDashboard() {
                 <Edit className="h-3.5 w-3.5 text-muted-foreground" />
               </button>
 
-              {/* Avatar */}
               <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-xl shadow-indigo-500/20">
                 <Building2 className="h-10 w-10 text-white" />
               </div>
 
               <div className="w-full">
-                <h3 className="text-lg font-black text-foreground">
-                  {profile.companyName || 'Set Company Name'}
-                </h3>
+                <h3 className="text-lg font-black text-foreground">{profile.companyName || 'Set Company Name'}</h3>
                 <p className="text-xs text-muted-foreground/40 mt-0.5">{user?.email}</p>
               </div>
 
-              {/* Profile completion */}
               <div className="w-full space-y-1.5">
                 <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-muted-foreground/40">
                   <span>Profile Strength</span>
@@ -360,7 +431,6 @@ export default function VendorDashboard() {
                 </div>
               </div>
 
-              {/* Details */}
               <div className="w-full space-y-2 mt-2">
                 {[
                   { icon: Phone, label: profile.phone || 'Not set' },
@@ -376,7 +446,6 @@ export default function VendorDashboard() {
             </CardContent>
           </Card>
 
-          {/* Categories + Certs stacked */}
           <div className="md:col-span-2 space-y-4">
             <Card className="glass border-none ring-1 ring-white/10">
               <CardHeader className="px-5 py-4 border-b border-white/5">
@@ -423,18 +492,17 @@ export default function VendorDashboard() {
         </div>
       </div>
 
-      {/* Bid Modal */}
       {selectedRfq && (
         <BidSubmissionModal
           isOpen={bidModalOpen}
           onClose={() => {
-            setBidModalOpen(false)
-            setSelectedRfq(null)
-            queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
+            setBidModalOpen(false);
+            setSelectedRfq(null);
+            queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] });
           }}
           rfq={selectedRfq}
         />
       )}
     </div>
-  )
+  );
 }
