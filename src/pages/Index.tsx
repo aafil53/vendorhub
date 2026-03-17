@@ -11,13 +11,12 @@ import { BidComparison } from '@/components/rfq/BidComparison';
 import { OrderHistory } from '@/components/orders/OrderHistory';
 import { AdminBids } from '@/components/admin/AdminBids';
 import { Equipment, RFQ, Bid } from '@/types/vendor';
-import { toast } from 'sonner';
 import { jwtDecode } from 'jwt-decode';
 
 type ViewState =
   | { type: 'dashboard' }
-  | { type: 'equipment' }              // admin: static inventory
-  | { type: 'equipment-catalog' }      // client: vendor-driven catalog
+  | { type: 'equipment' }
+  | { type: 'equipment-catalog' }
   | { type: 'vendors' }
   | { type: 'vendor-selection'; category: string; equipmentId?: number; equipmentName?: string }
   | { type: 'rfq' }
@@ -27,18 +26,18 @@ type ViewState =
   | { type: 'settings' }
   | { type: 'admin-bids' };
 
-const viewTitles: Record<string, { title: string; subtitle?: string }> = {
-  dashboard: { title: 'Dashboard', subtitle: 'Overview of your vendor management system' },
-  equipment: { title: 'System Inventory', subtitle: 'Manage equipment and detect shortages' },
-  'equipment-catalog': { title: 'Equipment Catalog', subtitle: 'Browse available equipment by vendor category' },
-  vendors: { title: 'Vendor Directory', subtitle: 'Browse and connect with vendors' },
-  'vendor-selection': { title: 'Send RFQ', subtitle: 'Select vendors and send a request for quotation' },
-  rfq: { title: 'RFQ & Bids', subtitle: 'Manage requests for quotation and compare bids' },
-  bidding: { title: 'Bid Comparison', subtitle: 'Compare and select vendor bids' },
-  orders: { title: 'Purchase Orders', subtitle: 'Track and manage orders' },
-  'admin-bids': { title: 'Admin Dashboard', subtitle: 'Review and approve bids' },
-  reports: { title: 'Reports', subtitle: 'Analytics and reporting' },
-  settings: { title: 'Settings', subtitle: 'System configuration' },
+const viewMeta: Record<string, { title: string; subtitle?: string }> = {
+  dashboard:          { title: 'Dashboard',         subtitle: 'Overview of your vendor management system' },
+  equipment:          { title: 'System Inventory',  subtitle: 'Manage equipment and detect shortages' },
+  'equipment-catalog':{ title: 'Equipment Catalog', subtitle: 'Browse available equipment by vendor category' },
+  vendors:            { title: 'Vendor Directory',  subtitle: 'Browse and connect with vendors' },
+  'vendor-selection': { title: 'Send RFQ',          subtitle: 'Select vendors and send a request for quotation' },
+  rfq:                { title: 'RFQ & Bids',        subtitle: 'Manage requests for quotation and compare bids' },
+  bidding:            { title: 'Bid Comparison',    subtitle: 'Compare and select vendor bids' },
+  orders:             { title: 'Purchase Orders',   subtitle: 'Track and manage orders' },
+  'admin-bids':       { title: 'Admin Dashboard',   subtitle: 'Review and approve bids' },
+  reports:            { title: 'Reports',           subtitle: 'Analytics and reporting' },
+  settings:           { title: 'Settings',          subtitle: 'System configuration' },
 };
 
 const Index = () => {
@@ -54,152 +53,98 @@ const Index = () => {
         if (decoded.role === 'admin') {
           setViewState({ type: 'admin-bids' });
         } else if (decoded.role === 'client') {
-          // Clients default to the dynamic equipment catalog
           setViewState({ type: 'equipment-catalog' });
         }
-      } catch (e) { }
+      } catch {}
     }
   }, []);
 
   const handleNavigate = (path: string) => {
     switch (path) {
-      case 'dashboard':
-        setViewState({ type: 'dashboard' });
-        break;
-      case 'equipment':
-        // Clients see the dynamic catalog; admins see the static inventory
-        setViewState(userRole === 'client' ? { type: 'equipment-catalog' } : { type: 'equipment' });
-        break;
-      case 'vendors':
-        setViewState({ type: 'vendors' });
-        break;
-      case 'rfq':
-        setViewState({ type: 'rfq' });
-        break;
-      case 'orders':
-        setViewState({ type: 'orders' });
-        break;
-      case 'reports':
-        setViewState({ type: 'reports' });
-        break;
-      case 'settings':
-        setViewState({ type: 'settings' });
-        break;
-      default:
-        console.warn('Unknown path:', path);
+      case 'dashboard': setViewState({ type: 'dashboard' }); break;
+      case 'equipment': setViewState(userRole === 'client' ? { type: 'equipment-catalog' } : { type: 'equipment' }); break;
+      case 'vendors':   setViewState({ type: 'vendors' }); break;
+      case 'rfq':       setViewState({ type: 'rfq' }); break;
+      case 'orders':    setViewState({ type: 'orders' }); break;
+      case 'reports':   setViewState({ type: 'reports' }); break;
+      case 'settings':  setViewState({ type: 'settings' }); break;
     }
   };
 
-  // Admin/client: from static EquipmentTable → vendor selection
   const handleCheckVendors = (equipment: Equipment) => {
-    setViewState({
-      type: 'vendor-selection',
-      category: equipment.category,
-      equipmentId: parseInt(equipment.id),
-      equipmentName: equipment.name
-    });
+    setViewState({ type: 'vendor-selection', category: equipment.category, equipmentId: parseInt(equipment.id), equipmentName: equipment.name });
   };
+  const handleSelectCategory = (category: string) => setViewState({ type: 'vendor-selection', category });
+  const handleSendRFQ = (_vendorIds: number[]) => setViewState({ type: 'rfq' });
+  const handleViewBids = (rfq: RFQ) => setViewState({ type: 'bidding', rfq });
+  const handleOrderCreated = () => setViewState({ type: 'orders' });
 
-  // Client: from EquipmentCatalog → vendor selection
-  const handleSelectCategory = (category: string) => {
-    setViewState({ type: 'vendor-selection', category });
-  };
+  const currentViewKey =
+    viewState.type === 'vendor-selection' ? 'vendor-selection' :
+    viewState.type === 'bidding'          ? 'bidding' :
+    viewState.type;
+  const { title, subtitle } = viewMeta[currentViewKey] || { title: 'Dashboard' };
 
-  // Called after RFQ is successfully sent
-  const handleSendRFQ = (_vendorIds: number[]) => {
-    setViewState({ type: 'rfq' });
-  };
-
-  const handleViewBids = (rfq: RFQ) => {
-    setViewState({ type: 'bidding', rfq });
-  };
-
-  const handleOrderCreated = () => {
-    setViewState({ type: 'orders' });
-  };
-
-  const currentViewKey = viewState.type === 'vendor-selection' ? 'vendor-selection' :
-    viewState.type === 'bidding' ? 'bidding' :
-      viewState.type;
-  const headerInfo = viewTitles[currentViewKey] || { title: 'Dashboard' };
+  const sidebarKey =
+    viewState.type === 'vendor-selection' ? 'equipment' :
+    viewState.type === 'bidding'          ? 'rfq' :
+    viewState.type === 'equipment-catalog'? 'equipment' :
+    viewState.type;
 
   const renderContent = () => {
-    // Admin Override
     if (viewState.type === 'admin-bids' || (userRole === 'admin' && viewState.type === 'dashboard')) {
       return <AdminBids />;
     }
-
     switch (viewState.type) {
-      case 'dashboard':
-        return <DashboardOverview />;
-      case 'equipment':
-        // Static inventory (admin / legacy)
-        return <EquipmentTable onCheckVendors={handleCheckVendors} />;
-      case 'equipment-catalog':
-        // Dynamic vendor-driven catalog (clients)
-        return <EquipmentCatalog onSelectCategory={handleSelectCategory} />;
-      case 'vendors':
-        return <VendorList onSendRFQ={handleSelectCategory} />;
-      case 'vendor-selection':
-        return (
-          <VendorSelection
-            category={viewState.category}
-            equipmentId={viewState.equipmentId}
-            equipmentName={viewState.equipmentName}
-            onSendRFQ={handleSendRFQ}
-            onBack={() => setViewState(userRole === 'client' ? { type: 'equipment-catalog' } : { type: 'equipment' })}
-          />
-        );
-      case 'rfq':
-        return <RFQList onViewBids={handleViewBids} />;
-      case 'bidding':
-        return (
-          <BidComparison
-            rfq={viewState.rfq}
-            onOrderCreated={handleOrderCreated}
-            onBack={() => setViewState({ type: 'rfq' })}
-          />
-        );
-      case 'orders':
-        return <OrderHistory />;
-      case 'reports':
-        return (
-          <div className="flex items-center justify-center h-96 rounded-lg border-2 border-dashed">
-            <p className="text-muted-foreground">Reports section coming soon...</p>
-          </div>
-        );
-      case 'settings':
-        return (
-          <div className="flex items-center justify-center h-96 rounded-lg border-2 border-dashed">
-            <p className="text-muted-foreground">Settings section coming soon...</p>
-          </div>
-        );
-      default:
-        return <DashboardOverview />;
+      case 'dashboard':         return <DashboardOverview />;
+      case 'equipment':         return <EquipmentTable onCheckVendors={handleCheckVendors} />;
+      case 'equipment-catalog': return <EquipmentCatalog onSelectCategory={handleSelectCategory} />;
+      case 'vendors':           return <VendorList onSendRFQ={handleSelectCategory} />;
+      case 'vendor-selection':  return (
+        <VendorSelection
+          category={viewState.category}
+          equipmentId={viewState.equipmentId}
+          equipmentName={viewState.equipmentName}
+          onSendRFQ={handleSendRFQ}
+          onBack={() => setViewState(userRole === 'client' ? { type: 'equipment-catalog' } : { type: 'equipment' })}
+        />
+      );
+      case 'rfq':     return <RFQList onViewBids={handleViewBids} />;
+      case 'bidding': return (
+        <BidComparison
+          rfq={viewState.rfq}
+          onOrderCreated={handleOrderCreated}
+          onBack={() => setViewState({ type: 'rfq' })}
+        />
+      );
+      case 'orders': return <OrderHistory />;
+      case 'reports': return (
+        <div className="flex flex-col items-center justify-center h-64 rounded-xl border-2 border-dashed border-slate-200 bg-white">
+          <div className="text-4xl mb-3">📊</div>
+          <p className="text-base font-semibold text-slate-500">Reports coming soon</p>
+          <p className="text-sm text-slate-400 mt-1">Advanced analytics will be available here.</p>
+        </div>
+      );
+      case 'settings': return (
+        <div className="flex flex-col items-center justify-center h-64 rounded-xl border-2 border-dashed border-slate-200 bg-white">
+          <div className="text-4xl mb-3">⚙️</div>
+          <p className="text-base font-semibold text-slate-500">Settings coming soon</p>
+          <p className="text-sm text-slate-400 mt-1">System configuration will be available here.</p>
+        </div>
+      );
+      default: return <DashboardOverview />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-background selection:bg-primary/20">
-      <DashboardSidebar
-        currentView={
-          viewState.type === 'vendor-selection' ? (userRole === 'client' ? 'equipment' : 'equipment') :
-            viewState.type === 'bidding' ? 'rfq' :
-              viewState.type === 'equipment-catalog' ? 'equipment' :
-                viewState.type
-        }
-        onNavigate={handleNavigate}
-      />
-      <div className="pl-64 flex flex-col min-h-screen relative">
-        {/* Sub-background for content */}
-        <div className="fixed inset-0 z-0 pointer-events-none opacity-40">
-          <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] rounded-full bg-primary/5 blur-[100px]" />
-          <div className="absolute bottom-[20%] left-[20%] w-[30%] h-[30%] rounded-full bg-accent/5 blur-[100px]" />
-        </div>
+    <div className="min-h-screen bg-background">
+      <DashboardSidebar currentView={sidebarKey} onNavigate={handleNavigate} />
 
-        <DashboardHeader {...headerInfo} />
-        <main className="relative z-10 p-8 flex-1 animate-reveal delay-300">
-          <div className="max-w-[1600px] mx-auto">
+      {/* pl-60 matches the new sidebar w-60 (240px) */}
+      <div className="pl-60 flex flex-col min-h-screen">
+        <DashboardHeader title={title} subtitle={subtitle} />
+        <main className="flex-1 p-6">
+          <div className="max-w-[1440px] mx-auto animate-reveal">
             {renderContent()}
           </div>
         </main>
@@ -207,6 +152,5 @@ const Index = () => {
     </div>
   );
 };
-
 
 export default Index;
