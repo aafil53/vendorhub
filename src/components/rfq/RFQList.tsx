@@ -1,213 +1,500 @@
-import { useState } from 'react';
-import { FileText, Clock, CheckCircle, Users, Send, TrendingUp, Circle } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useCallback, useEffect } from 'react';
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
+  FileText, Clock, CheckCircle, Users, TrendingUp,
+  Search, XCircle, RefreshCw, ChevronRight, Loader2,
+  AlertTriangle, Send, BarChart3, Plus
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import api from '@/lib/api';
 import { jwtDecode } from 'jwt-decode';
 import { BidSubmissionModal } from '../bidding/BidSubmissionModal';
 
-interface RFQListProps {
-  onViewBids: (rfq: any) => void;
-}
+interface RFQListProps { onViewBids: (rfq: any) => void; }
 
-const STATUS_CONFIG: Record<string, { color: string; bg: string; dot: string; label: string }> = {
-  open: { color: 'text-amber-400', bg: 'bg-amber-400/10', dot: 'bg-amber-400', label: 'Open' },
-  closed: { color: 'text-slate-400', bg: 'bg-slate-400/10', dot: 'bg-slate-400', label: 'Closed' },
-  awarded: { color: 'text-emerald-400', bg: 'bg-emerald-400/10', dot: 'bg-emerald-400', label: 'Awarded' },
-  cancelled: { color: 'text-red-400', bg: 'bg-red-400/10', dot: 'bg-red-400', label: 'Cancelled' },
+// ── Status config (enterprise light palette) ──────────────────────────────────
+const STATUS = {
+  open:      { label: 'Open',      dot: 'bg-blue-500',    text: 'text-blue-700',    bg: 'bg-blue-50',    ring: 'ring-blue-100'    },
+  closed:    { label: 'Closed',    dot: 'bg-slate-400',   text: 'text-slate-600',   bg: 'bg-slate-100',  ring: 'ring-slate-200'   },
+  awarded:   { label: 'Awarded',   dot: 'bg-emerald-500', text: 'text-emerald-700', bg: 'bg-emerald-50', ring: 'ring-emerald-100' },
+  cancelled: { label: 'Cancelled', dot: 'bg-red-400',     text: 'text-red-700',     bg: 'bg-red-50',     ring: 'ring-red-100'     },
 };
 
-export function RFQList({ onViewBids }: RFQListProps) {
-  const [selectedRfq, setSelectedRfq] = useState<any>(null);
-  const [isBidModalOpen, setIsBidModalOpen] = useState(false);
+type FilterTab = 'all' | 'open' | 'closed' | 'awarded' | 'cancelled';
 
-  const { data: rfqs = [], isLoading } = useQuery({
-    queryKey: ['rfqs'],
-    queryFn: async () => {
-      const { data } = await api.get('/rfqs');
-      return data;
-    },
-  });
+// ── Countdown badge ────────────────────────────────────────────────────────────
+function DeadlineBadge({ deadline }: { deadline: string | null | undefined }) {
+  const [label, setLabel] = useState('');
+  const [urgency, setUrgency] = useState<'ok' | 'warn' | 'urgent' | 'expired'>('ok');
+
+  const compute = useCallback(() => {
+    if (!deadline) return;
+    const diff = new Date(deadline).getTime() - Date.now();
+    if (diff <= 0) { setLabel('Expired'); setUrgency('expired'); return; }
+    const d = Math.floor(diff / 86_400_000);
+    const h = Math.floor((diff % 86_400_000) / 3_600_000);
+    const m = Math.floor((diff % 3_600_000) / 60_000);
+    const s = Math.floor((diff % 60_000) / 1_000);
+    setLabel(d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m ${s}s`);
+    setUrgency(diff < 3_600_000 ? 'urgent' : diff < 86_400_000 ? 'warn' : 'ok');
+  }, [deadline]);
+
+  useEffect(() => {
+    if (!deadline) return;
+    compute();
+    const id = setInterval(compute, 1_000);
+    return () => clearInterval(id);
+  }, [deadline, compute]);
+
+  if (!deadline) return <span className="text-[12px] text-slate-300">—</span>;
+
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold',
+      urgency === 'expired' ? 'bg-red-50 text-red-600 ring-1 ring-red-100' :
+      urgency === 'urgent'  ? 'bg-red-50 text-red-600 ring-1 ring-red-100' :
+      urgency === 'warn'    ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-100' :
+                              'bg-slate-50 text-slate-500 ring-1 ring-slate-100'
+    )}>
+      {urgency === 'expired' ? <AlertTriangle className="h-2.5 w-2.5" /> : <Clock className="h-2.5 w-2.5" />}
+      {label}
+    </span>
+  );
+}
+
+// ── Bid progress bar ──────────────────────────────────────────────────────────
+function BidBar({ count, vendorCount }: { count: number; vendorCount: number }) {
+  const pct = vendorCount > 0 ? Math.min((count / vendorCount) * 100, 100) : 0;
+  return (
+    <div className="flex items-center gap-2">
+      <span className={cn('text-[13px] font-semibold', count > 0 ? 'text-slate-800' : 'text-slate-400')}>
+        {count}
+      </span>
+      {vendorCount > 0 && (
+        <div className="w-14 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+          <div className="h-full rounded-full bg-violet-500 transition-all duration-500" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+      {count === 0 && <span className="text-[11px] text-slate-300">awaiting</span>}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+export function RFQList({ onViewBids }: RFQListProps) {
+  const [selectedRfq, setSelectedRfq]   = useState<any>(null);
+  const [bidModalOpen, setBidModalOpen]  = useState(false);
+  const [filter, setFilter]             = useState<FilterTab>('all');
+  const [search, setSearch]             = useState('');
+  const queryClient = useQueryClient();
 
   const token = localStorage.getItem('token');
   let userRole = 'client';
-  try { if (token) { const d: any = jwtDecode(token); userRole = d.role; } } catch { }
+  try { if (token) { const d: any = jwtDecode(token); userRole = d.role; } } catch {}
 
-  const handleAction = (rfq: any) => {
-    if (userRole === 'vendor') {
-      setSelectedRfq(rfq);
-      setIsBidModalOpen(true);
-    } else {
-      onViewBids(rfq);
-    }
-  };
+  const { data: rfqs = [], isLoading } = useQuery({
+    queryKey: ['rfqs'],
+    queryFn: async () => { const { data } = await api.get('/rfqs'); return data; },
+  });
 
+  // ── Cancel mutation ──────────────────────────────────────────────────────────
+  const cancelMutation = useMutation({
+    mutationFn: async (rfqId: number) => { const { data } = await api.patch(`/rfqs/${rfqId}/cancel`); return data; },
+    onSuccess: () => {
+      toast.success('RFQ cancelled');
+      try { queryClient.invalidateQueries({ queryKey: ['rfqs'] }); } catch {}
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to cancel RFQ'),
+  });
+
+  // ── Reopen mutation ──────────────────────────────────────────────────────────
+  const reopenMutation = useMutation({
+    mutationFn: async (rfqId: number) => { const { data } = await api.patch(`/rfqs/${rfqId}/reopen`); return data; },
+    onSuccess: (data) => {
+      toast.success(data?.deadlineCleared ? 'RFQ reopened — expired deadline was cleared' : 'RFQ reopened successfully');
+      try { queryClient.invalidateQueries({ queryKey: ['rfqs'] }); } catch {}
+    },
+    onError: (err: any) => toast.error(err?.message || 'Failed to reopen RFQ'),
+  });
+
+  // ── Filter + search ──────────────────────────────────────────────────────────
+  const filtered = rfqs.filter((r: any) => {
+    const matchesTab    = filter === 'all' || r.status === filter;
+    const matchesSearch = !search ||
+      r.equipmentName?.toLowerCase().includes(search.toLowerCase()) ||
+      String(r.id).includes(search);
+    return matchesTab && matchesSearch;
+  });
+
+  // ── Stats ────────────────────────────────────────────────────────────────────
   const stats = {
-    total: rfqs.length,
-    open: rfqs.filter((r: any) => r.status === 'open').length,
-    awarded: rfqs.filter((r: any) => r.status === 'awarded').length,
-    bids: rfqs.reduce((a: number, r: any) => a + (r.bids?.length || 0), 0),
+    total:     rfqs.length,
+    open:      rfqs.filter((r: any) => r.status === 'open').length,
+    awarded:   rfqs.filter((r: any) => r.status === 'awarded').length,
+    bids:      rfqs.reduce((a: number, r: any) => a + (r.bids?.length || 0), 0),
+    cancelled: rfqs.filter((r: any) => r.status === 'cancelled').length,
   };
+
+  const TABS: { key: FilterTab; label: string; count: number }[] = [
+    { key: 'all',       label: 'All',       count: stats.total     },
+    { key: 'open',      label: 'Open',      count: stats.open      },
+    { key: 'awarded',   label: 'Awarded',   count: stats.awarded   },
+    { key: 'cancelled', label: 'Cancelled', count: stats.cancelled },
+    { key: 'closed',    label: 'Closed',    count: rfqs.filter((r: any) => r.status === 'closed').length },
+  ];
+
+  const isMutating = cancelMutation.isPending || reopenMutation.isPending;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
 
-      {/* ── KPI Strip ──────────────────────────────────────────────────────── */}
-      <div className="grid gap-4 md:grid-cols-4 animate-reveal">
+      {/* ── KPI Strip ─────────────────────────────────────────────────────── */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          { label: 'Total RFQs', value: stats.total, icon: FileText, color: 'text-blue-400', bg: 'bg-blue-400/10' },
-          { label: 'Open', value: stats.open, icon: Clock, color: 'text-amber-400', bg: 'bg-amber-400/10' },
-          { label: 'Awarded', value: stats.awarded, icon: CheckCircle, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-          { label: 'Bids In', value: stats.bids, icon: TrendingUp, color: 'text-violet-400', bg: 'bg-violet-400/10' },
-        ].map((s, i) => (
-          <Card key={s.label} className="glass border-none ring-1 ring-white/10 overflow-hidden group">
-            <CardContent className="flex items-center gap-4 p-5 relative">
-              <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${s.bg} ${s.color} group-hover:scale-110 transition-transform duration-300 shrink-0`}>
-                <s.icon className="h-5 w-5" />
+          { label: 'Total RFQs', value: stats.total,   accent: '#2563EB', icon: FileText    },
+          { label: 'Open',       value: stats.open,    accent: '#F59E0B', icon: Clock       },
+          { label: 'Awarded',    value: stats.awarded, accent: '#16A34A', icon: CheckCircle },
+          { label: 'Bids In',    value: stats.bids,    accent: '#7C3AED', icon: TrendingUp  },
+        ].map(s => (
+          <div key={s.label} className="kpi-card group cursor-default">
+            <div className="w-1 shrink-0" style={{ backgroundColor: s.accent }} />
+            <div className="flex items-center gap-3 px-4 py-3.5 flex-1">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-200 group-hover:scale-105" style={{ backgroundColor: s.accent + '18' }}>
+                <s.icon className="h-5 w-5" style={{ color: s.accent }} />
               </div>
               <div>
-                <p className="text-[10px] uppercase tracking-widest font-black text-muted-foreground/40">{s.label}</p>
-                <p className={`text-2xl font-black tracking-tighter mt-0.5 ${s.color}`}>{s.value}</p>
+                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">{s.label}</p>
+                <p className="text-[26px] font-bold text-slate-900 leading-tight">{s.value}</p>
               </div>
-              <div className={`absolute -right-3 -top-3 w-16 h-16 ${s.bg} blur-2xl rounded-full opacity-60`} />
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         ))}
       </div>
 
-      {/* ── Table ──────────────────────────────────────────────────────────── */}
-      <Card className="glass border-none ring-1 ring-white/10 overflow-hidden animate-reveal delay-100">
-        <CardHeader className="px-8 py-5 border-b border-white/5 bg-white/3 flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle className="text-base font-black tracking-tight">
-              {userRole === 'vendor' ? 'Incoming Opportunities' : 'Your RFQs'}
-            </CardTitle>
-            <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground/30 mt-0.5">
-              {isLoading ? 'Loading...' : `${rfqs.length} total requests`}
+      {/* ── Table card ────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-slate-100 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
+              <FileText className="h-4 w-4 text-blue-600" />
+            </div>
+            <div>
+              <h3 className="text-[15px] font-semibold text-slate-900">
+                {userRole === 'vendor' ? 'Incoming Opportunities' : 'Your RFQs'}
+              </h3>
+              <p className="text-[12px] text-slate-400 mt-0.5">
+                {isLoading ? 'Loading…' : `${rfqs.length} total requests`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Search */}
+            <div className="relative hidden sm:block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+              <input
+                value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="Search RFQs…"
+                className="h-9 w-44 pl-8 pr-3 rounded-lg border border-slate-200 bg-slate-50 text-[13px] text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+              />
+            </div>
+            {/* Refresh */}
+            <button
+              onClick={() => queryClient.invalidateQueries({ queryKey: ['rfqs'] })}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Filter tabs */}
+        <div className="flex items-center gap-1 px-6 py-2.5 border-b border-slate-100 overflow-x-auto">
+          {TABS.map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setFilter(tab.key)}
+              className={cn(
+                'flex items-center gap-1.5 h-7 px-3 rounded-full text-[12px] font-semibold whitespace-nowrap transition-all',
+                filter === tab.key
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'
+              )}
+            >
+              {tab.label}
+              <span className={cn(
+                'inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold',
+                filter === tab.key ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-500'
+              )}>
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Table */}
+        {isLoading ? (
+          <div className="flex h-48 items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-20 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-50">
+              <FileText className="h-6 w-6 text-slate-300" />
+            </div>
+            <div>
+              <p className="text-[14px] font-semibold text-slate-500">
+                {search ? `No RFQs matching "${search}"` : filter !== 'all' ? `No ${filter} RFQs` : 'No RFQs yet'}
+              </p>
+              <p className="text-[12px] text-slate-400 mt-1">
+                {!search && filter === 'all' ? 'Create your first RFQ from the Equipment Catalog.' : ''}
+              </p>
+            </div>
+            {(search || filter !== 'all') && (
+              <button onClick={() => { setSearch(''); setFilter('all'); }} className="text-[13px] font-semibold text-blue-600 hover:text-blue-700">
+                Clear filters
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-50 bg-slate-50/50">
+                  {[
+                    { label: 'ID',        w: 'w-[80px]'  },
+                    { label: 'Equipment', w: 'flex-1'    },
+                    ...(userRole === 'client' ? [
+                      { label: 'Vendors',  w: 'w-[90px]'  },
+                      { label: 'Bids',     w: 'w-[120px]' },
+                      { label: 'Deadline', w: 'w-[110px]' },
+                    ] : []),
+                    { label: 'Date',      w: 'w-[100px]' },
+                    { label: 'Status',    w: 'w-[110px]' },
+                    { label: '',          w: 'w-[160px]' },
+                  ].map(h => (
+                    <th key={h.label} className={cn('table-header-cell', h.w)}>{h.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map((rfq: any) => {
+                  const sc = STATUS[rfq.status as keyof typeof STATUS] || STATUS.open;
+                  const hasBids   = (rfq.bids?.length || 0) > 0;
+                  const vendorCnt = rfq.vendors?.length || 0;
+                  const isThisMutating = (cancelMutation.isPending && cancelMutation.variables === rfq.id) ||
+                                         (reopenMutation.isPending && reopenMutation.variables === rfq.id);
+
+                  return (
+                    <tr key={rfq.id} className="table-row group">
+
+                      {/* ID */}
+                      <td className="px-4 py-3.5">
+                        <span className="font-mono text-[12px] font-semibold text-blue-600">
+                          RFQ-{String(rfq.id).padStart(4,'0')}
+                        </span>
+                      </td>
+
+                      {/* Equipment */}
+                      <td className="px-4 py-3.5">
+                        <p className="text-[14px] font-semibold text-slate-800 group-hover:text-blue-700 transition-colors">
+                          {rfq.equipmentName}
+                        </p>
+                        {userRole !== 'client' && (
+                          <p className="text-[12px] text-slate-400 mt-0.5">From {rfq.clientName}</p>
+                        )}
+                      </td>
+
+                      {/* Vendors (client only) */}
+                      {userRole === 'client' && (
+                        <td className="px-4 py-3.5">
+                          <div className="flex items-center gap-1.5 text-[13px] text-slate-600">
+                            <Users className="h-3.5 w-3.5 text-slate-400" />
+                            {vendorCnt}
+                          </div>
+                        </td>
+                      )}
+
+                      {/* Bids (client only) */}
+                      {userRole === 'client' && (
+                        <td className="px-4 py-3.5">
+                          <BidBar count={rfq.bids?.length || 0} vendorCount={vendorCnt} />
+                        </td>
+                      )}
+
+                      {/* Deadline (client only) */}
+                      {userRole === 'client' && (
+                        <td className="px-4 py-3.5">
+                          <DeadlineBadge deadline={rfq.deadline} />
+                        </td>
+                      )}
+
+                      {/* Date */}
+                      <td className="px-4 py-3.5 text-[12px] text-slate-400">
+                        {new Date(rfq.createdAt).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'2-digit' })}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 py-3.5">
+                        <span className={cn('chip', sc.bg, sc.text, `ring-1 ${sc.ring}`)}>
+                          <span className={cn('h-1.5 w-1.5 rounded-full shrink-0', sc.dot)} />
+                          {sc.label}
+                        </span>
+                      </td>
+
+                      {/* ── Actions: strict state machine ──────────────────
+                       *
+                       *  AWARDED + order pending/completed  → PO info (read-only, no actions)
+                       *  AWARDED + order cancelled          → PO Cancelled badge + Reopen
+                       *  OPEN    + has bids                 → Compare Bids · Cancel
+                       *  OPEN    + no bids                  → Awaiting bids · Cancel
+                       *  CLOSED  + has bids                 → Award PO · Reopen · Cancel
+                       *  CLOSED  + no bids                  → Reopen · Cancel
+                       *  CANCELLED                          → Reopen only
+                       * ─────────────────────────────────────────────────── */}
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
+
+                          {/* ── VENDOR: only on open RFQs ─────────────── */}
+                          {userRole === 'vendor' && rfq.status === 'open' && (
+                            <button onClick={() => { setSelectedRfq(rfq); setBidModalOpen(true); }} className="btn-primary h-8 px-3 text-[12px]">
+                              <Send className="h-3.5 w-3.5" /> Bid
+                            </button>
+                          )}
+
+                          {/* ── CLIENT: AWARDED ────────────────────────── */}
+                          {userRole === 'client' && rfq.status === 'awarded' && (() => {
+                            const orderCancelled = rfq.orderStatus === 'cancelled';
+                            const orderCompleted = rfq.orderStatus === 'completed';
+                            return (
+                              <>
+                                {/* Awarded info pill — always visible */}
+                                <div className={cn(
+                                  'inline-flex flex-col rounded-lg px-3 py-1.5 border text-left min-w-0',
+                                  orderCancelled ? 'bg-red-50 border-red-100' :
+                                  orderCompleted ? 'bg-emerald-50 border-emerald-100' :
+                                  'bg-amber-50 border-amber-100'
+                                )}>
+                                  <span className={cn('text-[10px] font-bold uppercase tracking-wide',
+                                    orderCancelled ? 'text-red-500' :
+                                    orderCompleted ? 'text-emerald-600' : 'text-amber-600'
+                                  )}>
+                                    {orderCancelled ? '✕ PO Cancelled' : orderCompleted ? '✓ Completed' : '⏳ In Progress'}
+                                  </span>
+                                  {rfq.winningVendor && (
+                                    <span className="text-[12px] font-semibold text-slate-700 truncate max-w-[140px]">
+                                      {rfq.winningVendor} · ${Number(rfq.winningPrice).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Only allow reopen if PO was cancelled */}
+                                {orderCancelled && (
+                                  <button
+                                    onClick={() => reopenMutation.mutate(rfq.id)}
+                                    disabled={isMutating}
+                                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-100 text-[12px] font-semibold transition-all disabled:opacity-50"
+                                  >
+                                    {isThisMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                                    Reopen
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
+
+                          {/* ── CLIENT: OPEN ───────────────────────────── */}
+                          {userRole === 'client' && rfq.status === 'open' && (
+                            <>
+                              {hasBids ? (
+                                <button onClick={() => onViewBids(rfq)} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[12px] font-semibold transition-colors border border-blue-100">
+                                  <BarChart3 className="h-3.5 w-3.5" /> Compare Bids <ChevronRight className="h-3 w-3" />
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 text-[12px] text-slate-400 font-medium">
+                                  <Loader2 className="h-3 w-3 animate-spin text-slate-300" /> Awaiting bids
+                                </span>
+                              )}
+                              <button
+                                onClick={() => { if (confirm(`Cancel RFQ-${String(rfq.id).padStart(4,'0')}? Vendors will be notified.`)) cancelMutation.mutate(rfq.id); }}
+                                disabled={isMutating}
+                                title="Cancel RFQ"
+                                className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-100 transition-all disabled:opacity-50"
+                              >
+                                {isThisMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+                              </button>
+                            </>
+                          )}
+
+                          {/* ── CLIENT: CLOSED (deadline passed, no PO yet) */}
+                          {userRole === 'client' && rfq.status === 'closed' && (
+                            <>
+                              {hasBids && (
+                                <button onClick={() => onViewBids(rfq)} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-[12px] font-semibold transition-colors border border-violet-100">
+                                  <BarChart3 className="h-3.5 w-3.5" /> Award PO <ChevronRight className="h-3 w-3" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => reopenMutation.mutate(rfq.id)}
+                                disabled={isMutating}
+                                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-100 text-[12px] font-semibold transition-all disabled:opacity-50"
+                              >
+                                {isThisMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                                Reopen
+                              </button>
+                              <button
+                                onClick={() => { if (confirm(`Cancel RFQ-${String(rfq.id).padStart(4,'0')}?`)) cancelMutation.mutate(rfq.id); }}
+                                disabled={isMutating}
+                                title="Cancel RFQ"
+                                className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-red-500 hover:bg-red-50 hover:border-red-100 transition-all disabled:opacity-50"
+                              >
+                                {isThisMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5" />}
+                              </button>
+                            </>
+                          )}
+
+                          {/* ── CLIENT: CANCELLED (no active PO) ─────────*/}
+                          {userRole === 'client' && rfq.status === 'cancelled' && (
+                            <button
+                              onClick={() => reopenMutation.mutate(rfq.id)}
+                              disabled={isMutating}
+                              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-100 text-[12px] font-semibold transition-all disabled:opacity-50"
+                            >
+                              {isThisMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                              Reopen
+                            </button>
+                          )}
+
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Footer row count */}
+        {filtered.length > 0 && (
+          <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/30">
+            <p className="text-[12px] text-slate-400">
+              Showing {filtered.length} of {rfqs.length} RFQs
+              {filter !== 'all' && ` · filtered by "${filter}"`}
+              {search && ` · search: "${search}"`}
             </p>
           </div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b border-white/5 hover:bg-transparent">
-                  <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/40 pl-8 h-11">ID</TableHead>
-                  <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/40 h-11">Equipment</TableHead>
-                  {userRole === 'client' && <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/40 h-11">Vendors</TableHead>}
-                  {userRole === 'client' && <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/40 h-11">Bids</TableHead>}
-                  <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/40 h-11">Date</TableHead>
-                  <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/40 h-11">Status</TableHead>
-                  <TableHead className="font-black text-[10px] uppercase tracking-widest text-muted-foreground/40 pr-8 text-right h-11">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-
-              <TableBody>
-                {rfqs.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-48 text-center">
-                      <div className="flex flex-col items-center gap-3 text-muted-foreground/30">
-                        <FileText className="h-10 w-10 opacity-20" />
-                        <p className="font-bold">
-                          {isLoading ? 'Loading RFQs...' : 'No RFQs yet'}
-                        </p>
-                        {!isLoading && (
-                          <p className="text-xs">Create your first RFQ from the Equipment Catalog.</p>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  rfqs.map((rfq: any) => {
-                    const sc = STATUS_CONFIG[rfq.status] || STATUS_CONFIG.open;
-                    const hasBids = (rfq.bids?.length || 0) > 0;
-                    return (
-                      <TableRow key={rfq.id} className="border-b border-white/5 hover:bg-white/3 transition-colors group">
-                        <TableCell className="font-mono text-[11px] font-black text-muted-foreground/30 pl-8 py-4">
-                          #{String(rfq.id).padStart(4, '0')}
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <p className="font-bold text-sm text-foreground group-hover:text-amber-300 transition-colors">
-                            {rfq.equipmentName}
-                          </p>
-                        </TableCell>
-                        {userRole === 'client' && (
-                          <TableCell className="py-4">
-                            <div className="flex items-center gap-1.5">
-                              <Users className="h-3.5 w-3.5 text-muted-foreground/30" />
-                              <span className="text-xs font-bold text-muted-foreground/50">{rfq.vendors?.length || 0}</span>
-                            </div>
-                          </TableCell>
-                        )}
-                        {userRole === 'client' && (
-                          <TableCell className="py-4">
-                            <span className={cn(
-                              'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-black',
-                              hasBids
-                                ? 'bg-violet-400/10 text-violet-400'
-                                : 'bg-white/5 text-muted-foreground/30'
-                            )}>
-                              {hasBids && <Circle className="h-1.5 w-1.5 fill-current" />}
-                              {rfq.bids?.length || 0} received
-                            </span>
-                          </TableCell>
-                        )}
-                        <TableCell className="py-4 text-[11px] font-semibold text-muted-foreground/40">
-                          {new Date(rfq.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: '2-digit' }).toUpperCase()}
-                        </TableCell>
-                        <TableCell className="py-4">
-                          <span className={cn(
-                            'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wider',
-                            sc.bg, sc.color
-                          )}>
-                            <span className={cn('h-1.5 w-1.5 rounded-full', sc.dot)} />
-                            {sc.label}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-4 text-right pr-8">
-                          {userRole === 'vendor' ? (
-                            <Button
-                              size="sm"
-                              onClick={() => handleAction(rfq)}
-                              className="h-8 px-4 gap-1.5 bg-amber-500/10 hover:bg-amber-500 text-amber-400 hover:text-slate-900 border border-amber-500/20 font-black text-[11px] rounded-lg transition-all"
-                            >
-                              <Send className="h-3 w-3" /> Bid
-                            </Button>
-                          ) : hasBids ? (
-                            <Button
-                              size="sm"
-                              onClick={() => handleAction(rfq)}
-                              className="h-8 px-4 bg-white/5 hover:bg-amber-500/10 text-muted-foreground hover:text-amber-400 border border-white/10 hover:border-amber-500/20 font-black text-[11px] rounded-lg transition-all"
-                            >
-                              Compare Bids
-                            </Button>
-                          ) : (
-                            <span className="text-[10px] font-black text-muted-foreground/20 uppercase tracking-wider pr-1">
-                              Awaiting bids
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
       {selectedRfq && (
         <BidSubmissionModal
-          isOpen={isBidModalOpen}
-          onClose={() => setIsBidModalOpen(false)}
+          isOpen={bidModalOpen}
+          onClose={() => { setBidModalOpen(false); setSelectedRfq(null); }}
           rfq={selectedRfq}
         />
       )}

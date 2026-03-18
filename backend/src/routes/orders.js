@@ -32,7 +32,14 @@ router.post('/create', authMiddleware, requireRole(['client']), async (req, res)
     });
 
     await bid.update({ status: 'accepted' });
-    await bid.rfq.update({ status: 'closed' });
+    await bid.rfq.update({ status: 'awarded' }); // PO issued = awarded
+
+    // Reject all other pending bids on this RFQ
+    const { Op } = require('sequelize');
+    await Bid.update(
+      { status: 'rejected' },
+      { where: { rfqId: bid.rfq.id, id: { [Op.ne]: bidId }, status: 'pending' } }
+    );
 
     // Notify vendor via socket
     const io = getIo();
