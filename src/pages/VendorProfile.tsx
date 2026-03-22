@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Building2, Phone, User, Award, History, Package, Loader2, ArrowRight, CheckCircle2, Star, ListChecks } from 'lucide-react';
 
 const EQUIPMENT_CATEGORIES = [
-  'Cranes', 'Excavators', 'Bulldozers', 'Dump Trucks', 'Forklifts', 
+  'Cranes', 'Excavators', 'Bulldozers', 'Dump Trucks', 'Forklifts',
   'Drilling Rigs', 'Piling Equipment', 'Concrete Pumps'
 ];
 
@@ -32,7 +32,7 @@ export default function VendorProfile() {
   const handleCategoryChange = (category: string, checked: boolean) => {
     setFormData(prev => ({
       ...prev,
-      categories: checked 
+      categories: checked
         ? [...(prev.categories || []), category]
         : (prev.categories || []).filter(c => c !== category)
     }));
@@ -41,13 +41,13 @@ export default function VendorProfile() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    
+
     const updatedData = {
       ...formData,
       experienceYears: Number(formData.experienceYears),
       rating: Number(formData.rating),
       ordersCount: Number(formData.ordersCount),
-      certifications: typeof formData.certifications === 'string' 
+      certifications: typeof formData.certifications === 'string'
         ? formData.certifications.split(',').map(s => s.trim()).filter(Boolean)
         : formData.certifications,
     };
@@ -69,7 +69,7 @@ export default function VendorProfile() {
       <Card className="max-w-3xl w-full glass border-none ring-1 ring-white/10 shadow-2xl relative overflow-hidden">
         {/* Background Decorative Blur */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-[60px] rounded-full -mr-16 -mt-16" />
-        
+
         <CardHeader className="space-y-1 relative z-10">
           <div className="flex items-center gap-3 mb-2">
             <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -83,8 +83,8 @@ export default function VendorProfile() {
             {isProfileComplete ? 'Vendor Profile' : 'Complete Your Profile'}
           </CardTitle>
           <CardDescription className="text-muted-foreground/60 font-medium">
-            {isProfileComplete 
-              ? 'Keep your business details updated for procurement opportunities.' 
+            {isProfileComplete
+              ? 'Keep your business details updated for procurement opportunities.'
               : 'Add your company details to start submitting bids and receiving RFQs.'}
           </CardDescription>
         </CardHeader>
@@ -171,7 +171,7 @@ export default function VendorProfile() {
                     placeholder="4.8"
                     className="pl-10 h-12 bg-white/5 border-white/10 rounded-xl focus:ring-primary/20 font-bold"
                     value={formData.rating}
-                    onChange={(e) => setFormData({ ...formData, rating: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, rating: Number(e.target.value) })}
                   />
                 </div>
               </div>
@@ -187,7 +187,7 @@ export default function VendorProfile() {
                     placeholder="0"
                     className="pl-10 h-12 bg-white/5 border-white/10 rounded-xl focus:ring-primary/20 font-bold"
                     value={formData.ordersCount}
-                    onChange={(e) => setFormData({ ...formData, ordersCount: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, ordersCount: Number(e.target.value) })}
                   />
                 </div>
               </div>
@@ -199,8 +199,8 @@ export default function VendorProfile() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {EQUIPMENT_CATEGORIES.map((category) => (
                   <div key={category} className="flex items-center space-x-2 bg-white/5 p-3 rounded-xl border border-white/5 hover:border-primary/50 transition-colors">
-                    <Checkbox 
-                      id={category} 
+                    <Checkbox
+                      id={category}
                       checked={formData.categories?.includes(category)}
                       onCheckedChange={(checked) => handleCategoryChange(category, checked as boolean)}
                     />
@@ -230,8 +230,8 @@ export default function VendorProfile() {
               </div>
             </div>
 
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               disabled={isLoading}
               className="w-full h-14 rounded-2xl bg-primary hover:bg-primary/90 text-white font-black uppercase tracking-widest shadow-xl shadow-primary/20 transition-all active:scale-95 flex items-center justify-center gap-2"
             >
