@@ -346,68 +346,52 @@ export function RFQList({ onViewBids }: RFQListProps) {
                         </span>
                       </td>
 
-                      {/* ── Actions: strict state machine ──────────────────
+                      {/* ── Actions: corrected enterprise state machine ────
                        *
-                       *  AWARDED + order pending/completed  → PO info (read-only, no actions)
-                       *  AWARDED + order cancelled          → PO Cancelled badge + Reopen
-                       *  OPEN    + has bids                 → Compare Bids · Cancel
-                       *  OPEN    + no bids                  → Awaiting bids · Cancel
-                       *  CLOSED  + has bids                 → Award PO · Reopen · Cancel
-                       *  CLOSED  + no bids                  → Reopen · Cancel
-                       *  CANCELLED                          → Reopen only
+                       *  State after order cancel: rfq=closed, bid=pending  ← KEY FIX
+                       *
+                       *  AWARDED + order pending    → ⏳ In Progress (read-only)
+                       *  AWARDED + order completed  → ✓ Completed (read-only)
+                       *  OPEN    + has bids         → Compare Bids · Cancel
+                       *  OPEN    + no bids          → Awaiting bids · Cancel
+                       *  CLOSED  + has bids         → Re-Award PO · Reopen · Cancel
+                       *    ↑ covers: deadline-expired AND post-cancel-reopen
+                       *  CLOSED  + no bids          → Reopen · Cancel
+                       *  CANCELLED                  → Reopen only
                        * ─────────────────────────────────────────────────── */}
                       <td className="px-4 py-3.5">
                         <div className="flex items-center justify-end gap-2 flex-wrap">
 
-                          {/* ── VENDOR: only on open RFQs ─────────────── */}
+                          {/* ── VENDOR ────────────────────────────────────── */}
                           {userRole === 'vendor' && rfq.status === 'open' && (
                             <button onClick={() => { setSelectedRfq(rfq); setBidModalOpen(true); }} className="btn-primary h-8 px-3 text-[12px]">
                               <Send className="h-3.5 w-3.5" /> Bid
                             </button>
                           )}
 
-                          {/* ── CLIENT: AWARDED ────────────────────────── */}
-                          {userRole === 'client' && rfq.status === 'awarded' && (() => {
-                            const orderCancelled = rfq.orderStatus === 'cancelled';
-                            const orderCompleted = rfq.orderStatus === 'completed';
-                            return (
-                              <>
-                                {/* Awarded info pill — always visible */}
-                                <div className={cn(
-                                  'inline-flex flex-col rounded-lg px-3 py-1.5 border text-left min-w-0',
-                                  orderCancelled ? 'bg-red-50 border-red-100' :
-                                  orderCompleted ? 'bg-emerald-50 border-emerald-100' :
-                                  'bg-amber-50 border-amber-100'
-                                )}>
-                                  <span className={cn('text-[10px] font-bold uppercase tracking-wide',
-                                    orderCancelled ? 'text-red-500' :
-                                    orderCompleted ? 'text-emerald-600' : 'text-amber-600'
-                                  )}>
-                                    {orderCancelled ? '✕ PO Cancelled' : orderCompleted ? '✓ Completed' : '⏳ In Progress'}
-                                  </span>
-                                  {rfq.winningVendor && (
-                                    <span className="text-[12px] font-semibold text-slate-700 truncate max-w-[140px]">
-                                      {rfq.winningVendor} · ${Number(rfq.winningPrice).toLocaleString()}
-                                    </span>
-                                  )}
-                                </div>
+                          {/* ── CLIENT: AWARDED ────────────────────────────
+                           *  Only two sub-states: pending (in progress) or completed.
+                           *  "awarded + cancelled" no longer exists — cancel resets to closed.
+                           * ────────────────────────────────────────────── */}
+                          {userRole === 'client' && rfq.status === 'awarded' && (
+                            <div className={cn(
+                              'inline-flex flex-col rounded-lg px-3 py-1.5 border text-left',
+                              rfq.orderStatus === 'completed' ? 'bg-emerald-50 border-emerald-100' : 'bg-amber-50 border-amber-100'
+                            )}>
+                              <span className={cn('text-[10px] font-bold uppercase tracking-wide',
+                                rfq.orderStatus === 'completed' ? 'text-emerald-600' : 'text-amber-600'
+                              )}>
+                                {rfq.orderStatus === 'completed' ? '✓ Completed' : '⏳ In Progress'}
+                              </span>
+                              {rfq.winningVendor && (
+                                <span className="text-[12px] font-semibold text-slate-700 truncate max-w-[140px]">
+                                  {rfq.winningVendor} · ${Number(rfq.winningPrice || 0).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          )}
 
-                                {/* Only allow reopen if PO was cancelled */}
-                                {orderCancelled && (
-                                  <button
-                                    onClick={() => reopenMutation.mutate(rfq.id)}
-                                    disabled={isMutating}
-                                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-100 text-[12px] font-semibold transition-all disabled:opacity-50"
-                                  >
-                                    {isThisMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                                    Reopen
-                                  </button>
-                                )}
-                              </>
-                            );
-                          })()}
-
-                          {/* ── CLIENT: OPEN ───────────────────────────── */}
+                          {/* ── CLIENT: OPEN ───────────────────────────────── */}
                           {userRole === 'client' && rfq.status === 'open' && (
                             <>
                               {hasBids ? (
@@ -430,17 +414,27 @@ export function RFQList({ onViewBids }: RFQListProps) {
                             </>
                           )}
 
-                          {/* ── CLIENT: CLOSED (deadline passed, no PO yet) */}
+                          {/* ── CLIENT: CLOSED ─────────────────────────────
+                           *  Covers two scenarios:
+                           *  1. Deadline auto-expired — bids exist, pick the winner
+                           *  2. PO was cancelled — bid reset to pending, re-award needed
+                           *  Both handled identically: show bids, let client re-award
+                           * ────────────────────────────────────────────── */}
                           {userRole === 'client' && rfq.status === 'closed' && (
                             <>
-                              {hasBids && (
-                                <button onClick={() => onViewBids(rfq)} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-[12px] font-semibold transition-colors border border-violet-100">
-                                  <BarChart3 className="h-3.5 w-3.5" /> Award PO <ChevronRight className="h-3 w-3" />
+                              {hasBids ? (
+                                <button onClick={() => onViewBids(rfq)} className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-violet-50 hover:bg-violet-100 text-violet-700 text-[12px] font-bold transition-colors border border-violet-100">
+                                  <BarChart3 className="h-3.5 w-3.5" />
+                                  {rfq.hasOrder ? 'Re-Award PO' : 'Award PO'}
+                                  <ChevronRight className="h-3 w-3" />
                                 </button>
+                              ) : (
+                                <span className="text-[12px] text-slate-400">No bids received</span>
                               )}
                               <button
                                 onClick={() => reopenMutation.mutate(rfq.id)}
                                 disabled={isMutating}
+                                title="Reopen to invite more vendors"
                                 className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-700 hover:bg-blue-50 hover:border-blue-100 text-[12px] font-semibold transition-all disabled:opacity-50"
                               >
                                 {isThisMutating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
@@ -457,7 +451,7 @@ export function RFQList({ onViewBids }: RFQListProps) {
                             </>
                           )}
 
-                          {/* ── CLIENT: CANCELLED (no active PO) ─────────*/}
+                          {/* ── CLIENT: CANCELLED ──────────────────────────── */}
                           {userRole === 'client' && rfq.status === 'cancelled' && (
                             <button
                               onClick={() => reopenMutation.mutate(rfq.id)}
