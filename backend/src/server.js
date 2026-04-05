@@ -42,6 +42,7 @@ app.use('/api/equipment',     require('./routes/equipment'));
 app.use('/api/vendors',       require('./routes/vendors'));
 app.use('/api/notifications', require('./routes/notifications'));
 app.use('/api/vendor-scores', require('./routes/vendorScore'));
+app.use('/api/invoices',      require('./routes/invoices'));
 
 // ── SOCKET.IO AUTH + ROOM SETUP ───────────────────────────────────────────────
 // Verify JWT on every socket connection — reject unauthenticated sockets
