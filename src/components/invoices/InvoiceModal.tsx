@@ -1,5 +1,6 @@
+// src/components/invoices/InvoiceModal.tsx  — REPLACE ENTIRE FILE
 import { useEffect, useRef } from 'react';
-import { X, Printer, Download, CheckCircle2, Clock, FileText, AlertCircle } from 'lucide-react';
+import { X, Printer, Download, CheckCircle2, Clock, FileText, AlertCircle, Building2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -13,62 +14,57 @@ interface InvoiceModalProps {
 }
 
 const STATUS_CONFIG = {
-  draft: { label: 'Draft',  bg: 'bg-slate-100', text: 'text-slate-600', icon: FileText    },
-  sent:  { label: 'Sent',   bg: 'bg-blue-50',   text: 'text-blue-700',  icon: Clock       },
-  paid:  { label: 'Paid',   bg: 'bg-emerald-50',text: 'text-emerald-700',icon: CheckCircle2},
+  draft: { label: 'Draft', bg: 'bg-slate-100', text: 'text-slate-600', icon: FileText, dot: 'bg-slate-400' },
+  sent: { label: 'Sent', bg: 'bg-blue-50', text: 'text-blue-700', icon: Clock, dot: 'bg-blue-500' },
+  paid: { label: 'Paid', bg: 'bg-emerald-50', text: 'text-emerald-700', icon: CheckCircle2, dot: 'bg-emerald-500' },
 };
 
 export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: InvoiceModalProps) {
-  const printRef  = useRef<HTMLDivElement>(null);
+  const printRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  // Try to fetch existing invoice
-  const { data: invoice, isLoading, error } = useQuery({
+  const { data: invoiceQuery, isLoading } = useQuery({
     queryKey: ['invoice', orderId],
     queryFn: async () => {
       try {
         const { data } = await api.get(`/invoices/order/${orderId}`);
         return data;
       } catch {
-        return null; // Not generated yet
+        return null;
       }
     },
     retry: false,
   });
 
-  // Generate invoice mutation
   const generateMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.post('/invoices/generate', { orderId });
       return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', orderId] });
+    onSuccess: (data) => {
+      queryClient.setQueryData(['invoice', orderId], data);
       toast.success('Invoice generated successfully');
     },
     onError: () => toast.error('Failed to generate invoice'),
   });
 
-  // Mark as sent (vendor action)
   const markSentMutation = useMutation({
     mutationFn: async () => {
-      // Update status via generate endpoint (idempotent, just updates status)
       const { data } = await api.post('/invoices/generate', { orderId });
       return data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoice', orderId] });
+    onSuccess: (data) => {
+      queryClient.setQueryData(['invoice', orderId], data);
     },
   });
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const invoice = invoiceQuery || generateMutation.data || markSentMutation.data;
+  const sc = invoice
+    ? (STATUS_CONFIG[invoice.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.draft)
+    : null;
 
-  const sc = invoice ? (STATUS_CONFIG[invoice.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.draft) : STATUS_CONFIG.draft;
-  const StatusIcon = sc.icon;
+  const handlePrint = () => window.print();
 
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
@@ -77,61 +73,115 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
 
   return (
     <>
-      {/* Print-only styles injected into head */}
       <style>{`
         @media print {
-          body > *:not(#invoice-print-root) { display: none !important; }
-          #invoice-print-root { display: block !important; position: fixed; inset: 0; background: white; z-index: 9999; }
+          body * { visibility: hidden; }
+          #invoice-print-root,
+          #invoice-print-root * { visibility: visible; }
+          #invoice-print-root {
+            position: fixed; inset: 0;
+            background: white !important;
+            overflow: visible !important;
+            max-height: none !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            z-index: 9999;
+          }
           .no-print { display: none !important; }
-          .print-only { display: block !important; }
           @page { margin: 20mm; size: A4; }
         }
-        .print-only { display: none; }
       `}</style>
 
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      {/* Backdrop — owns the scroll so the modal never clips upward */}
+      <div
+        className="fixed inset-0 z-50 bg-white/40 flex items-start justify-center p-4 overflow-y-auto"
+        onClick={onClose}
+      >
         <div
           id="invoice-print-root"
-          className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl my-auto flex flex-col"
           onClick={e => e.stopPropagation()}
         >
-          {/* Modal header (no-print) */}
-          <div className="no-print flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
-                <FileText className="h-4 w-4 text-blue-600" />
-              </div>
-              <div>
-                <h2 className="text-[15px] font-bold text-slate-900">
-                  {invoice ? invoice.invoiceNumber : 'Invoice'}
-                </h2>
-                {invoice && (
-                  <span className={cn('inline-flex items-center gap-1 text-[11px] font-semibold rounded-full px-2 py-0.5', sc.bg, sc.text)}>
-                    <StatusIcon className="h-3 w-3" /> {sc.label}
+
+          {/* ── Header ──────────────────────────────────────────────────── */}
+          <div className="no-print shrink-0 border-b border-slate-100">
+
+            {/* Top bar: branding left, actions right */}
+            <div className="flex items-center justify-between px-6 py-3 bg-slate-50/60">
+
+              {/* Left: VendorHub brand + invoice identity */}
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 shrink-0">
+                  <Building2 className="h-4 w-4 text-white" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-black text-slate-800 tracking-tight">VendorHub</span>
+                  <span className="text-slate-300 text-xs">·</span>
+                  <span className="text-[12px] font-semibold text-slate-500">
+                    {invoice ? invoice.invoiceNumber : 'Invoice'}
                   </span>
+                  {sc && (
+                    <span className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ml-1',
+                      sc.bg, sc.text
+                    )}>
+                      <span className={cn('h-1.5 w-1.5 rounded-full', sc.dot)} />
+                      {sc.label}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Right: action buttons + close */}
+              <div className="flex items-center gap-2">
+                {invoice && (
+                  <>
+                    <button
+                      onClick={handlePrint}
+                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 text-[12px] font-semibold transition-all"
+                    >
+                      <Printer className="h-3.5 w-3.5" /> Print
+                    </button>
+                    <button
+                      onClick={handlePrint}
+                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-semibold shadow-sm transition-all"
+                    >
+                      <Download className="h-3.5 w-3.5" /> PDF
+                    </button>
+                  </>
                 )}
+                <div className="w-px h-5 bg-slate-200 mx-1" />
+                <button
+                  onClick={onClose}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              {invoice && (
-                <button
-                  onClick={handlePrint}
-                  className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-semibold transition-colors"
-                >
-                  <Printer className="h-3.5 w-3.5" /> Print / Download PDF
-                </button>
-              )}
-              <button onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">
-                <X className="h-4 w-4 text-slate-500" />
-              </button>
-            </div>
+
+            {/* Sub-bar: PO reference + due date — only when invoice exists */}
+            {invoice && (
+              <div className="flex items-center gap-6 px-6 py-2 border-t border-slate-100 bg-white">
+                {[
+                  { label: 'PO Reference', value: invoice.poNumber },
+                  { label: 'Issued', value: new Date(invoice.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) },
+                  ...(invoice.dueDate ? [{ label: 'Due Date', value: new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) }] : []),
+                  { label: 'Amount', value: `$${Number(invoice.totalAmount || invoice.subtotal || 0).toLocaleString()}` },
+                ].map(d => (
+                  <div key={d.label} className="flex items-center gap-1.5">
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">{d.label}:</span>
+                    <span className="text-[12px] font-bold text-slate-700">{d.value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto" ref={printRef}>
+          {/* ── Body ──────────────────────────────────────────────────────── */}
+          <div ref={printRef}>
 
-            {/* Loading */}
             {isLoading && (
               <div className="flex h-64 items-center justify-center">
                 <div className="flex flex-col items-center gap-3">
@@ -141,7 +191,6 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
               </div>
             )}
 
-            {/* Not generated yet */}
             {!isLoading && !invoice && orderStatus !== 'cancelled' && (
               <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50">
@@ -164,7 +213,6 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
               </div>
             )}
 
-            {/* Cancelled order */}
             {!isLoading && !invoice && orderStatus === 'cancelled' && (
               <div className="flex flex-col items-center justify-center gap-3 py-20">
                 <AlertCircle className="h-10 w-10 text-slate-300" />
@@ -172,15 +220,13 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
               </div>
             )}
 
-            {/* ── INVOICE DOCUMENT ─────────────────────────────────────────── */}
             {invoice && (
               <div className="p-8 space-y-8">
 
-                {/* Header */}
+                {/* Invoice document header */}
                 <div className="flex items-start justify-between">
                   <div>
-                    {/* Logo / Brand */}
-                    <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-2.5 mb-5">
                       <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600">
                         <span className="text-white text-sm font-black">VH</span>
                       </div>
@@ -189,27 +235,27 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
                         <p className="text-[10px] text-slate-400 uppercase tracking-widest">Procurement Platform</p>
                       </div>
                     </div>
-                    <h1 className="text-[32px] font-black text-slate-900 leading-none">INVOICE</h1>
+                    <h1 className="text-[36px] font-black text-slate-900 leading-none tracking-tight">INVOICE</h1>
                   </div>
-
-                  <div className="text-right space-y-1">
-                    <p className="text-[13px] font-bold text-slate-900">{invoice.invoiceNumber}</p>
-                    <div className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold', sc.bg, sc.text)}>
-                      <StatusIcon className="h-3 w-3" /> {sc.label}
-                    </div>
+                  <div className="text-right space-y-1.5">
+                    <p className="text-[15px] font-bold text-slate-900">{invoice.invoiceNumber}</p>
+                    {sc && (
+                      <div className={cn('inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold', sc.bg, sc.text)}>
+                        <span className={cn('h-1.5 w-1.5 rounded-full', sc.dot)} /> {sc.label}
+                      </div>
+                    )}
                     <p className="text-[12px] text-slate-400">
-                      Issued: {new Date(invoice.createdAt).toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' })}
+                      Issued: {new Date(invoice.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
                     </p>
                     {invoice.dueDate && (
                       <p className="text-[12px] text-slate-400">
-                        Due: {new Date(invoice.dueDate).toLocaleDateString('en-GB', { day:'2-digit', month:'long', year:'numeric' })}
+                        Due: {new Date(invoice.dueDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })}
                       </p>
                     )}
-                    <p className="text-[12px] text-slate-500 font-medium">PO Ref: {invoice.poNumber}</p>
+                    <p className="text-[12px] font-medium text-slate-500">PO Ref: {invoice.poNumber}</p>
                   </div>
                 </div>
 
-                {/* Divider */}
                 <div className="h-px bg-slate-100" />
 
                 {/* Bill To / From */}
@@ -230,11 +276,11 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
                   </div>
                 </div>
 
-                {/* Line Items Table */}
+                {/* Line Items */}
                 <div>
                   <table className="w-full">
                     <thead>
-                      <tr className="bg-slate-50 rounded-xl overflow-hidden">
+                      <tr className="bg-slate-50">
                         <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wide px-4 py-3 rounded-l-xl">Description</th>
                         <th className="text-center text-[11px] font-bold text-slate-500 uppercase tracking-wide px-4 py-3">Qty</th>
                         <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wide px-4 py-3">Unit Price</th>
@@ -242,7 +288,7 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
                       </tr>
                     </thead>
                     <tbody>
-                      {invoice.lineItems.map((item: any, idx: number) => (
+                      {invoice.lineItems?.map((item: any, idx: number) => (
                         <tr key={idx} className="border-b border-slate-50">
                           <td className="px-4 py-4">
                             <p className="text-[14px] font-semibold text-slate-800">{item.description}</p>
@@ -261,7 +307,7 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
                   <div className="w-72 space-y-2">
                     <div className="flex justify-between text-[13px] text-slate-600">
                       <span>Subtotal</span>
-                      <span className="font-medium">${Number(invoice.subtotal).toLocaleString()}</span>
+                      <span className="font-medium">${Number(invoice.subtotal || 0).toLocaleString()}</span>
                     </div>
                     {invoice.discount > 0 && (
                       <div className="flex justify-between text-[13px] text-emerald-600">
@@ -270,18 +316,17 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
                       </div>
                     )}
                     <div className="flex justify-between text-[13px] text-slate-600">
-                      <span>VAT ({invoice.taxRate}%)</span>
-                      <span className="font-medium">${Number(invoice.taxAmount).toLocaleString()}</span>
+                      <span>VAT ({invoice.taxRate || 0}%)</span>
+                      <span className="font-medium">${Number(invoice.taxAmount || 0).toLocaleString()}</span>
                     </div>
                     <div className="h-px bg-slate-200" />
                     <div className="flex justify-between items-center">
                       <span className="text-[15px] font-bold text-slate-900">Total Due</span>
-                      <span className="text-[22px] font-black text-blue-600">${Number(invoice.totalAmount).toLocaleString()}</span>
+                      <span className="text-[22px] font-black text-blue-600">${Number(invoice.totalAmount || invoice.subtotal || 0).toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Notes */}
                 {invoice.notes && (
                   <div className="rounded-xl bg-slate-50 border border-slate-100 p-4">
                     <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mb-1">Notes</p>
@@ -289,7 +334,6 @@ export function InvoiceModal({ orderId, orderStatus, userRole, onClose }: Invoic
                   </div>
                 )}
 
-                {/* Footer */}
                 <div className="text-center pt-4 border-t border-slate-100">
                   <p className="text-[11px] text-slate-400">
                     Generated by VendorHub · {invoice.invoiceNumber} · Thank you for your business
