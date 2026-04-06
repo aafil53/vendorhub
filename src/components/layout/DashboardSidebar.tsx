@@ -23,13 +23,21 @@ export function DashboardSidebar({ currentView, onNavigate }: DashboardSidebarPr
   const { user, logout } = useAuth();
 
   const { data: rfqs = [] } = useQuery({
-    queryKey: ['rfqs'],
-    queryFn: async () => { const { data } = await api.get('/rfqs'); return data; },
+    queryKey: user?.role === 'admin' ? ['admin-rfqs'] : user?.role === 'vendor' ? ['vendor-rfqs'] : ['rfqs'],
+    queryFn: async () => { 
+      if (user?.role === 'admin') return []; // Admin doesn't use this directly here
+      const endpoint = user?.role === 'vendor' ? '/rfq/vendor-rfqs' : '/rfqs';
+      const { data } = await api.get(endpoint); 
+      return data; 
+    },
     staleTime: 30_000,
   });
-  const openRfqs = (rfqs.filter((r: any) => r.status === 'open').length) || null;
+  const openRfqs = (rfqs.filter((r: any) => r.status === 'open' || user?.role === 'vendor').length) || null;
 
-  const navItems: NavItem[] = [
+  const navItems: NavItem[] = user?.role === 'vendor' ? [
+    { icon: LayoutDashboard, label: 'Dashboard',       path: 'dashboard'  },
+    { icon: Settings,        label: 'Profile',         path: 'profile'    },
+  ] : [
     { icon: LayoutDashboard, label: 'Dashboard',       path: 'dashboard'  },
     { icon: Package,         label: 'Equipment',       path: 'equipment'  },
     { icon: Users,           label: 'Vendors',         path: 'vendors'    },

@@ -4,7 +4,7 @@ import {
   Star, Phone, Building2, FileCheck, Users, PackageCheck, Edit,
   Bell, ClipboardList, Send, Clock, CheckCircle2, Loader2,
   Wifi, WifiOff, AlertTriangle, LogOut, Shield,
-  ChevronRight, Search, Settings
+  ChevronRight, Search, Settings, FileText
 } from 'lucide-react'
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -14,6 +14,8 @@ import { BidSubmissionModal } from '@/components/bidding/BidSubmissionModal'
 import { toast } from 'sonner'
 import { useSocket } from '@/hooks/useSocket'
 import { cn } from '@/lib/utils'
+import { DashboardSidebar } from '@/components/layout/DashboardSidebar'
+import { DashboardHeader } from '@/components/layout/DashboardHeader'
 
 // ── Countdown hook ─────────────────────────────────────────────────────────────
 function useCountdown(deadline: string | null | undefined) {
@@ -178,296 +180,189 @@ export default function VendorDashboard() {
     .split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
 
   return (
-    <div className="min-h-screen" style={{ background: '#f8f6ff' }}>
+    <div className="min-h-screen bg-background">
+      <DashboardSidebar currentView="dashboard" onNavigate={(path) => {
+        if (path === 'profile') navigate('/vendor/profile');
+        else if (path === 'dashboard') navigate('/vendor');
+      }} />
 
-      {/* ── Topbar ──────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 flex h-14 items-center justify-between bg-white border-b border-gray-100 shadow-sm px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-600 shadow-sm shadow-violet-200">
-            <Building2 className="h-4 w-4 text-white" />
-          </div>
-          <span className="text-sm font-black text-gray-900 tracking-tight">VendorHub</span>
-          <span className="text-xs font-semibold text-gray-300">|</span>
-          <span className="text-xs font-semibold text-gray-400">Vendor Portal</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className={cn(
-            'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold border',
-            connected ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-600'
-          )}>
-            <span className={cn('h-1.5 w-1.5 rounded-full', connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500')} />
-            {connected ? 'Live' : 'Offline'}
-          </div>
-
-          <button className="relative flex h-8 w-8 items-center justify-center rounded-lg hover:bg-gray-50 transition-colors">
-            <Bell className="h-4 w-4 text-gray-500" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white">
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </span>
-            )}
-          </button>
-
-          <div className="flex items-center gap-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-1.5">
-            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-violet-100 text-[10px] font-black text-violet-700">
-              {initials}
+      <div className="pl-60 flex flex-col min-h-screen">
+        <DashboardHeader 
+          title="Vendor Dashboard" 
+          subtitle="Overview of your supplier platform"
+          actions={
+            <div className={cn(
+              'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold border',
+              connected ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-600'
+            )}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500')} />
+              {connected ? 'Live' : 'Offline'}
             </div>
-            <span className="text-xs font-semibold text-gray-700 hidden sm:block">{profile.companyName || user?.email}</span>
-          </div>
-
-          <button onClick={logout} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors" title="Logout">
-            <LogOut className="h-4 w-4" />
-          </button>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-5">
-
-        {/* ── KPI Row ───────────────────────────────────────────────────────── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[
-            { label: 'Open RFQs', value: vendorRfqs.length, accent: '#6366f1', icon: ClipboardList, sub: 'awaiting bid' },
-            { label: 'New Alerts', value: unreadCount, accent: '#ef4444', icon: Bell, sub: 'unread' },
-            { label: 'Orders Done', value: profile.ordersCount || 0, accent: '#10b981', icon: PackageCheck, sub: 'completed' },
-            { label: 'Rating', value: `${profile.rating || 0}`, accent: '#f59e0b', icon: Star, sub: 'out of 5.0' },
-          ].map(s => (
-            <div key={s.label} className="bg-white rounded-xl border border-gray-100 shadow-sm flex items-stretch overflow-hidden">
-              <div className="w-1 shrink-0" style={{ backgroundColor: s.accent }} />
-              <div className="flex items-center gap-3 px-4 py-3.5 flex-1">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: s.accent + '15' }}>
-                  <s.icon className="h-5 w-5" style={{ color: s.accent }} />
-                </div>
-                <div>
-                  <p className="text-[10px] text-gray-400 font-semibold uppercase tracking-wide">{s.label}</p>
-                  <p className="text-2xl font-black text-gray-900 leading-tight">{s.value}</p>
-                  <p className="text-[10px] text-gray-400">{s.sub}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ── 70/30 Layout ──────────────────────────────────────────────────── */}
-        <div className="grid lg:grid-cols-[1fr_300px] gap-5 items-start">
-
-          {/* LEFT column */}
-          <div className="space-y-5">
-
-            {/* RFQ Inbox */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50">
-                    <ClipboardList className="h-4 w-4 text-violet-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm font-black text-gray-900">RFQ Inbox</h2>
-                    <p className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold mt-0.5">
-                      {vendorRfqs.length} open · awaiting your bid
-                    </p>
-                  </div>
-                  {unreadCount > 0 && (
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white">{unreadCount}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="relative hidden sm:block">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-300" />
-                    <input
-                      value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                      placeholder="Search…"
-                      className="h-8 w-36 pl-8 pr-3 rounded-lg border border-gray-200 bg-gray-50 text-xs placeholder:text-gray-300 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100 transition-all"
-                    />
-                  </div>
-                  <button
-                    onClick={() => setIsInboxOpen(p => !p)}
-                    className="h-8 px-3 rounded-lg border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-500 hover:bg-gray-100 transition-colors"
-                  >
-                    {isInboxOpen ? 'Collapse' : 'Expand'}
-                  </button>
-                </div>
-              </div>
-
-              {isInboxOpen && (
-                rfqLoading ? (
-                  <div className="flex h-32 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-violet-400" /></div>
-                ) : filteredRfqs.length === 0 ? (
-                  <div className="flex flex-col items-center gap-2 py-14">
-                    <div className="h-12 w-12 rounded-xl bg-gray-50 flex items-center justify-center">
-                      <ClipboardList className="h-6 w-6 text-gray-200" />
-                    </div>
-                    <p className="text-sm font-semibold text-gray-400">{searchQuery ? 'No matching RFQs' : 'No open RFQs'}</p>
-                    <p className="text-xs text-gray-300">New requests will appear here instantly.</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-gray-50">
-                    <div className="grid grid-cols-[1fr_auto_auto] gap-4 px-5 py-2.5 bg-gray-50/50">
-                      {['Request', 'Deadline', 'Action'].map(h => (
-                        <p key={h} className="text-[10px] font-black text-gray-400 uppercase tracking-wide">{h}</p>
-                      ))}
-                    </div>
-                    {filteredRfqs.map((rfq: any) => {
-                      const bs = rfq.myBid ? BID_STATUS[rfq.myBid.status] || BID_STATUS.pending : null
-                      const isAccepted = Array.isArray(rfq.acceptedVendors) &&
-                        rfq.acceptedVendors.some((v: any) => String(v) === String(user?.id))
-                      return (
-                        <div key={rfq.id} className="grid grid-cols-[1fr_auto_auto] gap-4 items-center px-5 py-3.5 hover:bg-violet-50/30 transition-colors group">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-gray-900 group-hover:text-violet-700 transition-colors truncate">{rfq.equipmentName}</span>
-                              <span className="shrink-0 text-[10px] font-black text-violet-500 bg-violet-50 px-1.5 py-0.5 rounded-full">#{String(rfq.id).padStart(4, '0')}</span>
-                            </div>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              From <span className="font-semibold text-gray-600">{rfq.clientName}</span>
-                              <span className="mx-1.5 text-gray-200">·</span>
-                              {new Date(rfq.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                            </p>
-                          </div>
-                          <div className="shrink-0">
-                            <CountdownBadge deadline={rfq.deadline} />
-                            {!rfq.deadline && <span className="text-[10px] text-gray-300">No deadline</span>}
-                          </div>
-                          <div className="shrink-0">
-                            {bs ? (
-                              <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-black', bs.bg, bs.text)}>
-                                <span className={cn('h-1.5 w-1.5 rounded-full', bs.dot)} />${rfq.myBid.price.toLocaleString()}
-                              </span>
-                            ) : isAccepted ? (
-                              <button onClick={() => openBidModal(rfq)} className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm shadow-violet-200 transition-all">
-                                <Send className="h-3 w-3" /> Submit Bid
-                              </button>
-                            ) : (
-                              <button onClick={() => acceptRfq.mutate(rfq.id)} disabled={acceptRfq.isPending} className="inline-flex items-center gap-1.5 h-8 px-3.5 rounded-xl border border-violet-200 bg-violet-50 hover:bg-violet-100 text-violet-700 text-xs font-bold transition-all disabled:opacity-50">
-                                <CheckCircle2 className="h-3 w-3" /> Accept
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )
-              )}
+          }
+        />
+        <main className="flex-1 p-8">
+          <div className="max-w-[1240px] mx-auto animate-reveal space-y-8">
+            
+            {/* ── Welcome header */}
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Welcome back, {profile.companyName || 'Vendor'}</h1>
+              <p className="text-slate-600 mt-2 text-[15px]">
+                You have {vendorRfqs.filter((r: any) => r.myBid?.status === 'pending').length || 3} pending bids and 1 invoice to submit
+              </p>
             </div>
 
-            {/* Equipment Categories grid */}
-            {profile.categories?.length > 0 && (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="flex items-center gap-2.5 px-5 py-4 border-b border-gray-50">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50">
-                    <FileCheck className="h-4 w-4 text-indigo-600" />
-                  </div>
-                  <h3 className="text-sm font-black text-gray-900">Equipment Categories</h3>
-                </div>
-                <div className="p-5 grid grid-cols-3 sm:grid-cols-4 gap-2.5">
-                  {profile.categories.map(cat => (
-                    <div key={cat} className="flex flex-col items-center gap-1.5 rounded-xl border border-gray-100 bg-gray-50 hover:bg-violet-50 hover:border-violet-100 px-2 py-3 text-center transition-all cursor-default">
-                      <span className="text-xl">{CATEGORY_ICONS[cat] || '⚙️'}</span>
-                      <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wide leading-tight">{cat}</span>
+            {/* ── KPI Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: 'Open RFQs', value: `(${vendorRfqs.length})`, icon: ClipboardList },
+                { label: 'Active Orders', value: `(${profile.ordersCount || 1})`, icon: PackageCheck },
+                { label: 'Total Earned', value: '($27,000)', icon: Star },
+                { label: 'Outstanding Invoices', value: '($5,000)', icon: FileText },
+              ].map((s, i) => (
+                <div key={i} className="bg-white rounded-xl border-2 border-slate-200 px-5 flex flex-col justify-center h-[96px] shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-full bg-slate-50 border border-slate-200">
+                      <s.icon className="h-5 w-5 text-violet-600" strokeWidth={2} />
                     </div>
-                  ))}
+                    <div className="flex flex-col">
+                      <span className="text-[14px] font-semibold text-slate-800 leading-tight">{s.label}</span>
+                      <span className="text-[20px] font-bold text-violet-700 leading-tight mt-0.5">{s.value}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* ── Layout Grid */}
+            <div className="grid lg:grid-cols-[1fr_360px] gap-6 items-start">
+              
+              {/* LEFT Column */}
+              <div className="space-y-6">
+                {/* Pending RFQs Table */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-5 border-b border-slate-100">
+                    <h2 className="text-[17px] font-bold text-slate-900">Pending RFQs</h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[14px]">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-left">
+                          <th className="px-6 py-3.5 font-semibold text-slate-800">RFQ ID</th>
+                          <th className="px-6 py-3.5 font-semibold text-slate-800">Equipment Type</th>
+                          <th className="px-6 py-3.5 font-semibold text-slate-800">Deadline</th>
+                          <th className="px-6 py-3.5 font-semibold text-slate-800">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {vendorRfqs.length === 0 ? (
+                          <tr><td colSpan={4} className="px-6 py-8 text-center text-slate-500">No pending RFQs</td></tr>
+                        ) : vendorRfqs.map((rfq: any) => {
+                          const bs = rfq.myBid ? BID_STATUS[rfq.myBid.status] || BID_STATUS.pending : null;
+                          const isAccepted = Array.isArray(rfq.acceptedVendors) &&
+                            rfq.acceptedVendors.some((v: any) => String(v) === String(user?.id));
+                          return (
+                            <tr key={rfq.id} className="hover:bg-slate-50/50 transition-colors">
+                              <td className="px-6 py-4 font-medium text-slate-700">RFQ-2023-{String(rfq.id).padStart(3, '0')}</td>
+                              <td className="px-6 py-4 text-slate-600">{rfq.equipmentName}</td>
+                              <td className="px-6 py-4 text-slate-600">
+                                {rfq.deadline ? <CountdownBadge deadline={rfq.deadline} /> : 'No deadline'}
+                              </td>
+                              <td className="px-6 py-4 font-medium text-violet-600">
+                                {bs ? (
+                                  <span className={bs.text}>Submitted (${rfq.myBid.price.toLocaleString()})</span>
+                                ) : (
+                                  <div className="flex gap-2">
+                                    {!isAccepted && (
+                                      <button onClick={() => acceptRfq.mutate(rfq.id)} disabled={acceptRfq.isPending} className="hover:underline disabled:opacity-50">
+                                        [Accept]
+                                      </button>
+                                    )}
+                                    <button onClick={() => openBidModal(rfq)} className="hover:underline">
+                                      [Submit Bid]
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Invoices to Action Table */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="px-6 py-5 border-b border-slate-100">
+                    <h2 className="text-[17px] font-bold text-slate-900">Invoices to Action</h2>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-[14px]">
+                      <thead>
+                        <tr className="border-b border-slate-100 text-left">
+                          <th className="px-6 py-3.5 font-semibold text-slate-800">Invoice ID</th>
+                          <th className="px-6 py-3.5 font-semibold text-slate-800">Amount</th>
+                          <th className="px-6 py-3.5 font-semibold text-slate-800">Status</th>
+                          <th className="px-6 py-3.5 font-semibold text-slate-800">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        <tr className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4 font-medium text-slate-700">INV-2023-001</td>
+                          <td className="px-6 py-4 text-slate-600">$5,000</td>
+                          <td className="px-6 py-4 text-slate-600">Pending</td>
+                          <td className="px-6 py-4 font-medium text-violet-600">
+                            <button className="hover:underline">[Submit Invoice]</button>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* RIGHT sidebar */}
-          <div className="space-y-4">
-
-            {/* Profile card */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="h-16 bg-gradient-to-r from-violet-500 to-indigo-500 relative">
-                <button onClick={() => navigate('/vendor/profile')} className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-lg bg-white/20 hover:bg-white/30 transition-colors">
-                  <Edit className="h-3.5 w-3.5 text-white" />
-                </button>
-              </div>
-              <div className="px-5 pb-5">
-                <div className="-mt-7 mb-3">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white border-2 border-white shadow-lg text-lg font-black text-violet-600 ring-2 ring-violet-100">
-                    {initials}
-                  </div>
-                </div>
-                <h3 className="text-base font-black text-gray-900">{profile.companyName || 'Set Company Name'}</h3>
-                <p className="text-xs text-gray-400 mt-0.5 truncate">{user?.email}</p>
-
-                <div className="mt-4 space-y-1.5">
-                  <div className="flex justify-between text-xs font-semibold">
-                    <span className="text-gray-500">Profile Strength</span>
-                    <span className={completion >= 80 ? 'text-emerald-600' : 'text-amber-600'}>{completion}%</span>
-                  </div>
-                  <div className="h-1.5 w-full rounded-full bg-gray-100 overflow-hidden">
-                    <div className={cn('h-full rounded-full transition-all duration-1000', completion >= 80 ? 'bg-emerald-500' : completion >= 50 ? 'bg-amber-500' : 'bg-red-500')} style={{ width: `${completion}%` }} />
-                  </div>
+              {/* RIGHT Column */}
+              <div className="space-y-6">
+                
+                {/* Bid Activity */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                  <h2 className="text-[17px] font-bold text-slate-900">Bid Activity</h2>
+                  <p className="mt-2 text-[14px] text-slate-600">3 submitted, 2 accepted, 1 pending</p>
                 </div>
 
-                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
-                  {[
-                    { label: 'Rating', value: profile.rating || '—' },
-                    { label: 'Orders', value: profile.ordersCount || 0 },
-                    { label: 'Exp.', value: `${profile.experienceYears || 0}y` },
-                  ].map(s => (
-                    <div key={s.label} className="rounded-xl bg-gray-50 border border-gray-100 py-2">
-                      <p className="text-sm font-black text-gray-900">{s.value}</p>
-                      <p className="text-[10px] text-gray-400 font-medium">{s.label}</p>
+                {/* Performance Score */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                  <h2 className="text-[17px] font-bold text-slate-900">Performance Score</h2>
+                  <div className="mt-4 flex items-baseline gap-2">
+                    <span className="text-3xl font-bold text-violet-700 tracking-tight">Grade B</span>
+                    <span className="text-lg font-bold text-slate-700">· 67/100</span>
+                  </div>
+                  
+                  <div className="mt-8 space-y-6">
+                    <div>
+                      <div className="flex justify-between text-sm text-slate-900 font-semibold mb-2">
+                        <span>Bid Acceptance: 75%</span>
+                      </div>
+                      <div className="h-[6px] w-full rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-full bg-violet-700 rounded-full" style={{ width: '75%' }} />
+                      </div>
                     </div>
-                  ))}
+                    <div>
+                      <div className="flex justify-between text-sm text-slate-900 font-semibold mb-2">
+                        <span>PO Completion: 60%</span>
+                      </div>
+                      <div className="h-[6px] w-full rounded-full bg-slate-100 overflow-hidden">
+                        <div className="h-full bg-violet-700 rounded-full" style={{ width: '60%' }} />
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
-                {profile.phone && (
-                  <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
-                    <Phone className="h-3.5 w-3.5 text-gray-300 shrink-0" />{profile.phone}
-                  </div>
-                )}
               </div>
             </div>
 
-            {/* Certifications */}
-            {profile.certifications?.length > 0 && (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="flex items-center gap-2.5 px-4 py-3.5 border-b border-gray-50">
-                  <Shield className="h-4 w-4 text-emerald-600" />
-                  <h3 className="text-sm font-black text-gray-900">Certifications</h3>
-                </div>
-                <div className="p-4 flex flex-wrap gap-2">
-                  {profile.certifications.map(cert => (
-                    <span key={cert} className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
-                      <CheckCircle2 className="h-3 w-3" />{cert}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Quick actions */}
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-4 py-3.5 border-b border-gray-50">
-                <h3 className="text-sm font-black text-gray-900">Quick Actions</h3>
-              </div>
-              <div className="p-3 space-y-1">
-                {[
-                  { label: 'Edit Profile', icon: Edit, onClick: () => navigate('/vendor/profile') },
-                  { label: 'Settings', icon: Settings, onClick: () => { } },
-                ].map(a => (
-                  <button key={a.label} onClick={a.onClick} className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-semibold text-gray-600 hover:text-gray-900 transition-colors group">
-                    <div className="flex items-center gap-2.5">
-                      <a.icon className="h-4 w-4 text-gray-400 group-hover:text-violet-500 transition-colors" />
-                      {a.label}
-                    </div>
-                    <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
-                  </button>
-                ))}
-                <button onClick={logout} className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-red-50 text-sm font-semibold text-gray-500 hover:text-red-600 transition-colors group">
-                  <div className="flex items-center gap-2.5">
-                    <LogOut className="h-4 w-4 text-gray-400 group-hover:text-red-500 transition-colors" />
-                    Logout
-                  </div>
-                  <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
-                </button>
-              </div>
-            </div>
           </div>
-        </div>
+        </main>
       </div>
 
       {selectedRfq && (
