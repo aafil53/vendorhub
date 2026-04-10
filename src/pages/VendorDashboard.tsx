@@ -14,8 +14,6 @@ import { BidSubmissionModal } from '@/components/bidding/BidSubmissionModal'
 import { toast } from 'sonner'
 import { useSocket } from '@/hooks/useSocket'
 import { cn } from '@/lib/utils'
-import { DashboardSidebar } from '@/components/layout/DashboardSidebar'
-import { DashboardHeader } from '@/components/layout/DashboardHeader'
 
 // ── Countdown hook ─────────────────────────────────────────────────────────────
 function useCountdown(deadline: string | null | undefined) {
@@ -180,28 +178,7 @@ export default function VendorDashboard() {
     .split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase()
 
   return (
-    <div className="min-h-screen bg-background">
-      <DashboardSidebar currentView="dashboard" onNavigate={(path) => {
-        if (path === 'profile') navigate('/vendor/profile');
-        else if (path === 'dashboard') navigate('/vendor');
-      }} />
-
-      <div className="pl-60 flex flex-col min-h-screen">
-        <DashboardHeader 
-          title="Vendor Dashboard" 
-          subtitle="Overview of your supplier platform"
-          actions={
-            <div className={cn(
-              'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold border',
-              connected ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-red-50 border-red-100 text-red-600'
-            )}>
-              <span className={cn('h-1.5 w-1.5 rounded-full', connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500')} />
-              {connected ? 'Live' : 'Offline'}
-            </div>
-          }
-        />
-        <main className="flex-1 p-8">
-          <div className="max-w-[1240px] mx-auto animate-reveal space-y-8">
+    <div className="max-w-[1240px] mx-auto animate-reveal space-y-8 pb-8">
             
             {/* ── Welcome header */}
             <div>
@@ -360,10 +337,6 @@ export default function VendorDashboard() {
 
               </div>
             </div>
-
-          </div>
-        </main>
-      </div>
 
       {selectedRfq && (
         <BidSubmissionModal
