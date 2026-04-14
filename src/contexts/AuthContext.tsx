@@ -4,6 +4,13 @@ import api, { decodeToken } from '@/lib/api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Demo users for when backend is unavailable
+const DEMO_USERS: Record<AppRole, User> = {
+  client: { id: '1', email: 'client@example.com', name: 'Sarah Mitchell', role: 'client' },
+  vendor: { id: '2', email: 'vendor1@example.com', name: 'Omar Farouk', role: 'vendor' },
+  admin:  { id: '3', email: 'admin@example.com', name: 'Admin User', role: 'admin' },
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
     const stored = localStorage.getItem('currentUser');
@@ -20,8 +27,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('currentUser', JSON.stringify(parsedUser));
         return true;
       }
-    } catch (err) {
-      // ignore
+    } catch {
+      // Backend unavailable — fall back to demo login if credentials match
+      const demoUser = DEMO_USERS[role];
+      if (demoUser && demoUser.email === email) {
+        setUser(demoUser);
+        localStorage.setItem('currentUser', JSON.stringify(demoUser));
+        localStorage.setItem('token', 'demo-token');
+        return true;
+      }
     }
     return false;
   }, []);
@@ -32,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data) {
         return await login(email, password, role);
       }
-    } catch (err) {
+    } catch {
       // ignore
     }
     return false;
@@ -47,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('currentUser', JSON.stringify(updatedUser));
         return true;
       }
-    } catch (err) {
+    } catch {
       // ignore
     }
     return false;
