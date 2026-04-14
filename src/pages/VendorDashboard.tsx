@@ -94,7 +94,18 @@ export default function VendorDashboard() {
   useEffect(() => {
     fetch('http://localhost:5000/api/auth/profile', {
       headers: { Authorization: `Bearer ${token}` },
-    }).then(r => r.json()).then(setProfile).catch(() => { })
+    }).then(r => r.json()).then(setProfile).catch(() => {
+      // Fallback demo profile when backend is unavailable
+      setProfile({
+        companyName: user?.name || 'Demo Vendor',
+        phone: '+966 50 123 4567',
+        experienceYears: 8,
+        rating: 4.7,
+        ordersCount: 156,
+        categories: ['Cranes', 'Excavators', 'Forklifts'],
+        certifications: ['ARAMCO', 'Third-Party'],
+      })
+    })
   }, [])
 
   useEffect(() => {
