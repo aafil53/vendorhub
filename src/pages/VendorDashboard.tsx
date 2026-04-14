@@ -1,66 +1,79 @@
 import { useAuth } from '@/contexts/AuthContext'
 import {
-  TrendingUp, TrendingDown, ClipboardList, Send, Clock, CheckCircle2, Loader2,
-  AlertTriangle, ChevronRight, ArrowUpRight, ArrowDownRight, Eye, Zap,
-  BarChart3, Award, Briefcase, DollarSign, Users, FileText, Target
+  ClipboardList, Send, CheckCircle, Clock, Target, Award,
+  TrendingUp, TrendingDown, ArrowRight, AlertTriangle,
+  FileText, BarChart3, CircleDot, Loader2, DollarSign
 } from 'lucide-react'
 import { useEffect, useState, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { BidSubmissionModal } from '@/components/bidding/BidSubmissionModal'
 import { toast } from 'sonner'
 import { useSocket } from '@/hooks/useSocket'
 import { cn } from '@/lib/utils'
-import { StatCard } from '@/components/dashboard/StatCard'
 
-// ── Countdown hook ─────────────────────────────────────────────────────────────
-function useCountdown(deadline: string | null | undefined) {
-  const getRemaining = useCallback(() => {
-    if (!deadline) return null
-    const diff = new Date(deadline).getTime() - Date.now()
-    if (diff <= 0) return { expired: true, days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 }
-    return {
-      expired: false,
-      days: Math.floor(diff / 86_400_000),
-      hours: Math.floor((diff % 86_400_000) / 3_600_000),
-      minutes: Math.floor((diff % 3_600_000) / 60_000),
-      seconds: Math.floor((diff % 60_000) / 1_000),
-      total: diff,
-    }
-  }, [deadline])
-
-  const [remaining, setRemaining] = useState(getRemaining)
-  useEffect(() => {
-    if (!deadline) return
-    setRemaining(getRemaining())
-    const id = setInterval(() => setRemaining(getRemaining()), 1_000)
-    return () => clearInterval(id)
-  }, [deadline, getRemaining])
-  return remaining
+// ── KPI Card (matching client portal pattern) ──────────────────────────────────
+interface KpiCardProps {
+  label: string
+  value: string | number
+  footnote: string
+  accent: string
+  icon: React.ElementType
+  trend?: { value: number; positive: boolean }
+  badge?: { text: string; type: 'warning' | 'success' | 'info' | 'danger' }
 }
 
-function CountdownBadge({ deadline }: { deadline: string | null | undefined }) {
-  const r = useCountdown(deadline)
-  if (!deadline || !r) return null
-  if (r.expired) return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-100 px-2.5 py-1 text-[10px] font-bold text-red-600">
-      <AlertTriangle className="h-2.5 w-2.5" /> Expired
-    </span>
-  )
-  const isUrgent = r.total < 3_600_000
-  const isWarning = r.total < 86_400_000
-  const label = r.days > 0 ? `${r.days}d ${r.hours}h` : r.hours > 0 ? `${r.hours}h ${r.minutes}m` : `${r.minutes}m`
+function KpiCard({ label, value, footnote, accent, icon: Icon, trend, badge }: KpiCardProps) {
   return (
-    <span className={cn(
-      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-bold',
-      isUrgent ? 'bg-red-50 border-red-100 text-red-600' :
-        isWarning ? 'bg-amber-50 border-amber-100 text-amber-600' :
-          'bg-emerald-50 border-emerald-100 text-emerald-600'
-    )}>
-      <Clock className="h-2.5 w-2.5" />{label} left
-    </span>
+    <div className="kpi-card group cursor-default">
+      <div className="w-1 shrink-0" style={{ backgroundColor: accent }} />
+      <div className="flex flex-col justify-between p-5 flex-1 min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-200 group-hover:scale-105"
+            style={{ backgroundColor: accent + '18' }}
+          >
+            <Icon className="h-5 w-5" style={{ color: accent }} />
+          </div>
+          {trend && (
+            <div className={cn(
+              'flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold shrink-0',
+              trend.positive ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
+            )}>
+              {trend.positive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+              {trend.positive ? '+' : ''}{trend.value}%
+            </div>
+          )}
+          {badge && (
+            <span className={cn(
+              'rounded-full px-2 py-0.5 text-[11px] font-bold shrink-0',
+              badge.type === 'warning' && 'bg-amber-50 text-amber-700',
+              badge.type === 'danger' && 'bg-red-50 text-red-700',
+              badge.type === 'success' && 'bg-green-50 text-green-700',
+              badge.type === 'info' && 'bg-blue-50 text-blue-700',
+            )}>
+              {badge.text}
+            </span>
+          )}
+        </div>
+        <div className="mt-3">
+          <p className="text-[13px] font-medium text-slate-500">{label}</p>
+          <p className="text-[28px] font-bold text-slate-900 leading-tight tracking-tight mt-0.5">
+            {typeof value === 'number' ? value.toLocaleString() : value}
+          </p>
+          <p className="text-[12px] text-slate-400 mt-1">{footnote}</p>
+        </div>
+      </div>
+    </div>
   )
+}
+
+// ── Activity icon config ───────────────────────────────────────────────────────
+const ACTIVITY_ICON_CONFIG: Record<string, { bg: string; color: string; Icon: React.ElementType }> = {
+  new:     { bg: 'bg-blue-50',   color: 'text-blue-600',   Icon: FileText },
+  pending: { bg: 'bg-amber-50',  color: 'text-amber-600',  Icon: Clock },
+  success: { bg: 'bg-green-50',  color: 'text-green-600',  Icon: CheckCircle },
+  warning: { bg: 'bg-red-50',    color: 'text-red-600',    Icon: AlertTriangle },
 }
 
 interface UserProfile {
@@ -68,32 +81,15 @@ interface UserProfile {
   rating: number; ordersCount: number; categories: string[]; certifications: string[]
 }
 
-const BID_STATUS: Record<string, { text: string; dot: string; bg: string }> = {
-  accepted: { text: 'text-emerald-700', dot: 'bg-emerald-500', bg: 'bg-emerald-50' },
-  rejected: { text: 'text-red-700', dot: 'bg-red-500', bg: 'bg-red-50' },
-  pending: { text: 'text-amber-700', dot: 'bg-amber-500', bg: 'bg-amber-50' },
-}
-
-const CATEGORY_ICONS: Record<string, string> = {
-  Excavators: '🚜', Cranes: '🏗️', Forklifts: '🚛', 'Drilling Rigs': '⚙️',
-  Bulldozers: '🚧', 'Piling Equipment': '🔩', 'Dump Trucks': '🚚',
-  'Concrete Pumps': '🧱', Lifting: '🏗️', Earthmoving: '🚜', Transport: '🚚',
-  'Power/Gen': '⚡', Compressors: '💨',
-}
-
 export default function VendorDashboard() {
-  const { user, logout } = useAuth()
-  const navigate = useNavigate()
+  const { user } = useAuth()
   const queryClient = useQueryClient()
   const token = localStorage.getItem('token')
-  const { socket, connected } = useSocket()
+  const { socket } = useSocket()
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [selectedRfq, setSelectedRfq] = useState<any>(null)
   const [bidModalOpen, setBidModalOpen] = useState(false)
-  const [isInboxOpen, setIsInboxOpen] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
 
   useEffect(() => {
     fetch('http://localhost:5000/api/auth/profile', {
@@ -105,59 +101,38 @@ export default function VendorDashboard() {
     if (!socket) return
     const onNewRfq = () => {
       queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
-      queryClient.invalidateQueries({ queryKey: ['notif-count'] })
-      toast.success('New RFQ arrived!', { action: { label: 'View', onClick: () => setIsInboxOpen(true) } })
+      toast.success('New RFQ arrived!')
     }
     const onOrderCreated = () => {
       queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
       toast.success('🎉 A purchase order was placed on your bid!')
     }
-    const onRfqExpired = (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] })
-      queryClient.invalidateQueries({ queryKey: ['notif-count'] })
-      toast.warning(data?.message || 'An RFQ has expired.', { duration: 6000 })
-    }
     socket.on('notification:new', onNewRfq)
     socket.on('order:created', onOrderCreated)
-    socket.on('rfq:expired', onRfqExpired)
     return () => {
       socket.off('notification:new', onNewRfq)
       socket.off('order:created', onOrderCreated)
-      socket.off('rfq:expired', onRfqExpired)
     }
   }, [socket])
 
-  const { data: vendorRfqs = [], isLoading: rfqLoading } = useQuery({
+  const { data: vendorRfqs = [] } = useQuery({
     queryKey: ['vendor-rfqs'],
     queryFn: async () => { const { data } = await api.get('/rfq/vendor-rfqs'); return data },
   })
 
-  const { data: notifData } = useQuery({
-    queryKey: ['notif-count'],
-    queryFn: async () => { const { data } = await api.get('/notifications/unread-count'); return data },
-  })
-
-  const markAllRead = useMutation({
-    mutationFn: () => api.patch('/notifications/mark-all-read'),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notif-count'] }),
-  })
-
-  const acceptRfq = useMutation({
-    mutationFn: (id: number) => api.post(`/rfq/${id}/accept`),
-    onSuccess: () => { toast.success('RFQ Accepted'); queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] }) },
-    onError: (err: any) => toast.error(err?.message || 'Failed to accept RFQ'),
-  })
-
-  const unreadCount: number = notifData?.count || 0
-
   if (!profile) return (
-    <div className="flex h-screen items-center justify-center bg-slate-50">
+    <div className="flex h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
-        <Loader2 className="animate-spin h-8 w-8 text-blue-500" />
-        <p className="text-sm font-semibold text-slate-600">Loading your dashboard…</p>
+        <Loader2 className="animate-spin h-8 w-8 text-primary" />
+        <p className="text-sm font-semibold text-muted-foreground">Loading your dashboard…</p>
       </div>
     </div>
   )
+
+  const openRfqs = vendorRfqs.length
+  const pendingBids = vendorRfqs.filter((r: any) => r.myBid?.status === 'pending').length
+  const acceptedBids = vendorRfqs.filter((r: any) => r.myBid?.status === 'accepted').length
+  const bidSuccessRate = openRfqs > 0 ? Math.round((acceptedBids / openRfqs) * 100) : 0
 
   const completion = Math.min(
     [profile.companyName && 20, profile.phone && 15,
@@ -166,416 +141,250 @@ export default function VendorDashboard() {
       .filter(Boolean).reduce((a: number, b: any) => a + b, 0), 100)
 
   const openBidModal = (rfq: any) => {
-    setSelectedRfq(rfq); setBidModalOpen(true)
-    if (unreadCount > 0) markAllRead.mutate()
+    setSelectedRfq(rfq)
+    setBidModalOpen(true)
   }
 
-  const openRfqs = vendorRfqs.length
-  const pendingBids = vendorRfqs.filter((r: any) => r.myBid?.status === 'pending').length
-  const acceptedBids = vendorRfqs.filter((r: any) => r.myBid?.status === 'accepted').length
+  // ── KPI data ─────────────────────────────────────────────────────────────────
+  const kpis: KpiCardProps[] = [
+    {
+      label: 'Open RFQs',
+      value: openRfqs,
+      footnote: 'Awaiting your bid',
+      accent: '#2563EB',
+      icon: ClipboardList,
+      trend: { value: 12, positive: true },
+    },
+    {
+      label: 'Active Bids',
+      value: pendingBids,
+      footnote: 'Sent to clients',
+      accent: '#7C3AED',
+      icon: Send,
+      badge: pendingBids > 0 ? { text: 'Pending', type: 'info' } : undefined,
+    },
+    {
+      label: 'Accepted Bids',
+      value: acceptedBids,
+      footnote: 'Orders confirmed',
+      accent: '#16A34A',
+      icon: CheckCircle,
+      trend: { value: 8, positive: true },
+    },
+    {
+      label: 'Success Rate',
+      value: `${bidSuccessRate}%`,
+      footnote: 'Out of submitted bids',
+      accent: '#0891B2',
+      icon: Target,
+    },
+  ]
 
-  // Status counts for filter tabs
-  const pendingCount = vendorRfqs.filter((r: any) => !r.myBid).length
-  const submittedCount = vendorRfqs.filter((r: any) => r.myBid?.status === 'pending').length
-  const acceptedCount = vendorRfqs.filter((r: any) => r.myBid?.status === 'accepted').length
-  const winCount = vendorRfqs.filter((r: any) => r.myBid?.status === 'won').length
-  const rejectedCount = vendorRfqs.filter((r: any) => r.myBid?.status === 'rejected').length
+  // ── Activity feed ────────────────────────────────────────────────────────────
+  const activities = [
+    { action: 'New RFQ received',       detail: 'Cranes required for construction project',    time: '2h ago',  status: 'new' },
+    { action: 'Bid accepted',           detail: 'Excavator rental approved by client',         time: '5h ago',  status: 'success' },
+    { action: 'RFQ expires soon',       detail: 'Tower Crane 150 Ton — 2 hours remaining',    time: '22h ago', status: 'warning' },
+    { action: 'Bid submitted',          detail: 'Mobile Crane — Gulf Construction',            time: '1d ago',  status: 'pending' },
+  ]
 
-  const filteredRfqs = vendorRfqs.filter((r: any) => {
-    const matchesSearch = !searchQuery || r.equipmentName?.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = 
-      statusFilter === 'all' ? true :
-      statusFilter === 'pending' ? !r.myBid :
-      statusFilter === 'submitted' ? r.myBid?.status === 'pending' :
-      statusFilter === 'accepted' ? r.myBid?.status === 'accepted' :
-      statusFilter === 'won' ? r.myBid?.status === 'won' :
-      statusFilter === 'rejected' ? r.myBid?.status === 'rejected' : true
-    return matchesSearch && matchesStatus
-  })
-
-  const bidSuccessRate = openRfqs > 0 ? Math.round((acceptedBids / openRfqs) * 100) : 0
-
-  // Activity data for recent activity section
-  const recentActivities = [
-    { id: 1, type: 'rfq', title: 'New RFQ Received', description: 'Cranes required for construction project', time: '2h ago', status: 'new' },
-    { id: 2, type: 'bid', title: 'Bid Accepted', description: 'Your bid for Excavator rental approved', time: '5h ago', status: 'success' },
-    { id: 3, type: 'rfq', title: 'RFQ Expires Soon', description: 'Tower Crane 150 Ton - 2 hours remaining', time: '22h ago', status: 'warning' },
+  // ── Performance metrics ──────────────────────────────────────────────────────
+  const performanceMetrics = [
+    { label: 'Bid Success Rate', value: bidSuccessRate, color: '#16A34A' },
+    { label: 'Order Completion', value: 85, color: '#2563EB' },
+    { label: 'Average Rating', value: Math.round((profile.rating / 5) * 100), color: '#D97706', display: `${profile.rating}/5.0` },
   ]
 
   return (
-    <div className="max-w-7xl mx-auto px-6 space-y-8 pb-8 animate-reveal">
-      
-      {/* ── Welcome Header ───────────────────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
-        <p className="text-slate-600 mt-2 text-sm font-medium">Overview of your bidding and vendor management</p>
+    <div className="space-y-7 animate-reveal">
+
+      {/* ── KPI Strip ─────────────────────────────────── */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {kpis.map(kpi => <KpiCard key={kpi.label} {...kpi} />)}
       </div>
 
-      {/* ── KPI Cards Grid (with left border) ────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Open RFQs */}
-        <div className="kpi-card group cursor-default border-l-4 border-l-blue-600 bg-white rounded-lg border border-slate-200 hover:shadow-md transition-all p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
-              <ClipboardList className="h-5 w-5 text-blue-600" />
-            </div>
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">↑ 12% vs prev</span>
-          </div>
-          <p className="text-xs font-medium text-slate-500 mt-3 uppercase tracking-wide">Open RFQs</p>
-          <p className="text-3xl font-bold text-slate-900 mt-1">{openRfqs}</p>
-          <p className="text-xs text-slate-500 mt-1">Awaiting your bid</p>
-        </div>
-
-        {/* Active Bids */}
-        <div className="kpi-card group cursor-default border-l-4 border-l-emerald-600 bg-white rounded-lg border border-slate-200 hover:shadow-md transition-all p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50">
-              <Send className="h-5 w-5 text-emerald-600" />
-            </div>
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">↑ 8% vs prev</span>
-          </div>
-          <p className="text-xs font-medium text-slate-500 mt-3 uppercase tracking-wide">Active Bids</p>
-          <p className="text-3xl font-bold text-slate-900 mt-1">{acceptedBids}</p>
-          <p className="text-xs text-slate-500 mt-1">Sent to clients</p>
-        </div>
-
-        {/* Success Rate */}
-        <div className="kpi-card group cursor-default border-l-4 border-l-purple-600 bg-white rounded-lg border border-slate-200 hover:shadow-md transition-all p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-50">
-              <Target className="h-5 w-5 text-purple-600" />
-            </div>
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">↑ 5% vs prev</span>
-          </div>
-          <p className="text-xs font-medium text-slate-500 mt-3 uppercase tracking-wide">Success Rate</p>
-          <p className="text-3xl font-bold text-slate-900 mt-1">{bidSuccessRate}%</p>
-          <p className="text-xs text-slate-500 mt-1">Out of submitted bids</p>
-        </div>
-
-        {/* Rating */}
-        <div className="kpi-card group cursor-default border-l-4 border-l-green-600 bg-white rounded-lg border border-slate-200 hover:shadow-md transition-all p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50">
-              <Award className="h-5 w-5 text-green-600" />
-            </div>
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">↑ 2% vs prev</span>
-          </div>
-          <p className="text-xs font-medium text-slate-500 mt-3 uppercase tracking-wide">Rating</p>
-          <p className="text-3xl font-bold text-slate-900 mt-1">{profile.rating}⭐</p>
-          <p className="text-xs text-slate-500 mt-1">{profile.ordersCount || 0} completed orders</p>
-        </div>
-      </div>
-
-      {/* ── Blue Banner Section ──────────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl bg-blue-600 text-white p-8 flex items-center justify-between">
+      {/* ── Hero banner ───────────────────────────────── */}
+      <div className="relative overflow-hidden rounded-xl bg-primary px-8 py-6 flex items-center justify-between gap-6">
+        <div className="absolute inset-0 opacity-10" style={{
+          backgroundImage: 'radial-gradient(circle at 80% 50%, #ffffff 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+        }} />
         <div className="relative z-10">
-          <h2 className="text-2xl font-bold mb-2">Bid & Quote Overview</h2>
-          <p className="text-blue-100 text-sm max-w-md">
-            You have {openRfqs} active RFQs, {acceptedBids} active bids, and a {bidSuccessRate}% success rate this month.
+          <h2 className="text-[20px] font-bold text-primary-foreground leading-tight">Bid & Quote Overview</h2>
+          <p className="text-blue-100 text-sm mt-1 max-w-md">
+            You have {openRfqs} active RFQs, {acceptedBids} accepted bids, and a {bidSuccessRate}% success rate this month.
           </p>
         </div>
-        <div className="absolute -right-12 -top-12 w-40 h-40 bg-blue-500 rounded-full opacity-20" />
-        <div className="relative z-10 flex gap-3">
-          <button className="px-6 py-2.5 rounded-lg bg-white text-blue-600 font-bold text-sm hover:bg-blue-50 transition-all">
-            View Analytics
+        <div className="relative z-10 flex items-center gap-3 shrink-0">
+          <button className="flex items-center gap-2 h-10 px-5 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-white text-sm font-semibold transition-all duration-150">
+            Export Report
           </button>
-          <button className="px-6 py-2.5 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-bold text-sm transition-all border border-blue-500">
-            View All Bids
+          <button className="flex items-center gap-2 h-10 px-5 rounded-lg bg-white text-blue-700 text-sm font-bold hover:bg-blue-50 shadow-sm transition-all duration-150">
+            View All RFQs
           </button>
         </div>
       </div>
 
-      {/* ── Main Grid ────────────────────────────────────────────────────────────── */}
-      <div className="grid lg:grid-cols-[1fr_340px] gap-8 items-start">
-        
-        {/* LEFT: RFQs and Activity */}
-        <div className="space-y-8">
-          
-          {/* Available RFQs Section with Filters */}
-          <div>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-slate-900">Active RFQs</h2>
-              <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
-                {filteredRfqs.length} RFQ{filteredRfqs.length !== 1 ? 's' : ''}
-              </span>
-            </div>
+      {/* ── Main 2-col grid ───────────────────────────── */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
 
-            {/* Status Filter Tabs */}
-            <div className="flex flex-wrap gap-2 mb-6 pb-4 border-b border-slate-200">
-              <button
-                onClick={() => setStatusFilter('all')}
-                className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
-                  statusFilter === 'all'
-                    ? 'bg-blue-600 text-white shadow-md'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                All RFQs {vendorRfqs.length}
-              </button>
-              <button
-                onClick={() => setStatusFilter('pending')}
-                className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
-                  statusFilter === 'pending'
-                    ? 'bg-amber-600 text-white shadow-md'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                Pending {pendingCount}
-              </button>
-              <button
-                onClick={() => setStatusFilter('submitted')}
-                className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
-                  statusFilter === 'submitted'
-                    ? 'bg-blue-500 text-white shadow-md'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                Submitted {submittedCount}
-              </button>
-              <button
-                onClick={() => setStatusFilter('accepted')}
-                className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
-                  statusFilter === 'accepted'
-                    ? 'bg-emerald-600 text-white shadow-md'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                Accepted {acceptedCount}
-              </button>
-              <button
-                onClick={() => setStatusFilter('won')}
-                className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
-                  statusFilter === 'won'
-                    ? 'bg-green-600 text-white shadow-md'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                Won {winCount}
-              </button>
-              <button
-                onClick={() => setStatusFilter('rejected')}
-                className={`px-4 py-2 rounded-full text-sm font-bold transition-all ${
-                  statusFilter === 'rejected'
-                    ? 'bg-red-600 text-white shadow-md'
-                    : 'bg-white border border-slate-200 text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                Rejected {rejectedCount}
-              </button>
-            </div>
-
-            {filteredRfqs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50 py-16 text-center">
-                <div className="text-5xl mb-4">📋</div>
-                <p className="text-slate-700 font-semibold">No RFQs found</p>
-                <p className="text-slate-500 text-sm mt-1">
-                  {statusFilter === 'all' ? 'Check back soon for new opportunities' : 'Try adjusting your filters'}
-                </p>
+        {/* Recent Activity */}
+        <div className="bg-white rounded-xl border border-border shadow-xs overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
+                <TrendingUp className="h-4 w-4 text-blue-600" />
               </div>
-            ) : (
-              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
-                {/* Table Header */}
-                <div className="grid grid-cols-12 gap-4 bg-slate-50 border-b border-slate-200 px-6 py-4 text-xs font-bold uppercase tracking-wide text-slate-600">
-                  <div className="col-span-2">RFQ ID</div>
-                  <div className="col-span-2">Equipment</div>
-                  <div className="col-span-2">Client</div>
-                  <div className="col-span-1">Amount</div>
-                  <div className="col-span-2">Deadline</div>
-                  <div className="col-span-2">Status</div>
-                  <div className="col-span-1">Action</div>
-                </div>
-
-                {/* Table Rows */}
-                {filteredRfqs.map((rfq: any) => {
-                  const myBidStatus = rfq.myBid?.status
-                  const statusConfig: any = {
-                    pending: { label: 'Submitted', color: 'bg-blue-50', textColor: 'text-blue-700', dotColor: 'bg-blue-600' },
-                    accepted: { label: 'Accepted', color: 'bg-emerald-50', textColor: 'text-emerald-700', dotColor: 'bg-emerald-600' },
-                    rejected: { label: 'Rejected', color: 'bg-red-50', textColor: 'text-red-700', dotColor: 'bg-red-600' },
-                    won: { label: 'Won', color: 'bg-green-50', textColor: 'text-green-700', dotColor: 'bg-green-600' },
-                    null: { label: 'Pending', color: 'bg-amber-50', textColor: 'text-amber-600', dotColor: 'bg-amber-600' },
-                  }
-                  const status = statusConfig[myBidStatus] || statusConfig.null
-                  const deadline = new Date(rfq.deadline)
-                  const now = new Date()
-                  const daysLeft = Math.ceil((deadline.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-                  const isExpired = daysLeft < 0
-
-                  return (
-                    <div key={rfq.id} className="grid grid-cols-12 gap-4 border-b border-slate-100 px-6 py-5 items-center hover:bg-blue-50/30 transition-all group">
-                      <div className="col-span-2">
-                        <p className="font-bold text-slate-900">
-                          <span className="text-blue-600">RFQ-</span>{String(rfq.id).padStart(4, '0')}
-                        </p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="font-semibold text-slate-900 text-sm">{rfq.equipmentName}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{rfq.equipmentCategory}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="font-semibold text-slate-900 text-sm">{rfq.clientName || 'N/A'}</p>
-                      </div>
-                      <div className="col-span-1">
-                        <p className="font-bold text-slate-900">${(rfq.amount || 0).toLocaleString()}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-3.5 w-3.5 text-slate-400" />
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{deadline.toLocaleDateString()}</p>
-                            <p className={`text-xs font-bold ${isExpired ? 'text-red-600' : daysLeft <= 2 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                              {isExpired ? 'Expired' : daysLeft === 0 ? 'Today' : daysLeft === 1 ? 'Tomorrow' : `${daysLeft} days left`}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="col-span-2">
-                        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${status.color} font-bold text-xs`}>
-                          <span className={`h-2 w-2 rounded-full ${status.dotColor}`} />
-                          <span className={status.textColor}>{status.label}</span>
-                        </div>
-                      </div>
-                      <div className="col-span-1 flex justify-end">
-                        {!myBidStatus ? (
-                          <button
-                            onClick={() => openBidModal(rfq)}
-                            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all"
-                          >
-                            Bid
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => openBidModal(rfq)}
-                            className="px-4 py-2 rounded-lg border border-slate-200 hover:border-slate-300 text-slate-600 hover:text-slate-700 text-xs font-bold transition-all"
-                          >
-                            View
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )
-                })}
+              <div>
+                <h3 className="text-[15px] font-semibold text-slate-900">Recent Activity</h3>
+                <p className="text-[12px] text-slate-400">Last 48 hours</p>
               </div>
-            )}
+            </div>
+            <button className="flex items-center gap-1 text-[13px] font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+              View All <ArrowRight className="h-3.5 w-3.5" />
+            </button>
           </div>
-
-          {/* Recent Activity */}
-          <div>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-slate-900">Recent Activity</h2>
-              <a href="#" className="text-sm font-bold text-blue-600 hover:text-blue-700">View All →</a>
-            </div>
-
-            <div className="space-y-3">
-              {recentActivities.map((activity) => {
-                const statusConfig = {
-                  new: { bg: 'bg-blue-50', color: 'text-blue-600', dot: 'bg-blue-600', icon: '📋' },
-                  success: { bg: 'bg-green-50', color: 'text-green-600', dot: 'bg-green-600', icon: '✓' },
-                  warning: { bg: 'bg-amber-50', color: 'text-amber-600', dot: 'bg-amber-600', icon: '!' },
-                  pending: { bg: 'bg-amber-50', color: 'text-amber-600', dot: 'bg-amber-600', icon: '⏳' },
-                }
-                const config = statusConfig[activity.status as keyof typeof statusConfig] || statusConfig.new
-
-                return (
-                  <div key={activity.id} className="border border-slate-200 rounded-lg bg-white p-4 hover:border-slate-300 hover:shadow-sm transition-all">
-                    <div className="flex items-start gap-3">
-                      <div className={`flex h-10 w-10 items-center justify-center rounded-full text-lg font-bold text-white ${config.bg.replace('bg-', 'bg-').replace('-50', '-600')}`}>
-                        {config.icon}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-slate-900">{activity.title}</p>
-                        <p className="text-sm text-slate-600 mt-0.5">{activity.description}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${config.bg} ${config.color}`}>
-                          {activity.status === 'new' ? 'new' : activity.status === 'success' ? 'success' : 'warning'}
-                        </span>
-                        <p className="text-xs text-slate-500 mt-1">{activity.time}</p>
-                      </div>
-                    </div>
+          <div className="divide-y divide-slate-50">
+            {activities.map((item, idx) => {
+              const cfg = ACTIVITY_ICON_CONFIG[item.status] || ACTIVITY_ICON_CONFIG.new
+              return (
+                <div
+                  key={idx}
+                  className="flex items-center gap-4 px-6 py-3.5 hover:bg-slate-50/70 transition-colors duration-100 group cursor-default"
+                >
+                  <div className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl', cfg.bg)}>
+                    <cfg.Icon className={cn('h-4 w-4', cfg.color)} />
                   </div>
-                )
-              })}
-            </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13.5px] font-semibold text-slate-800 group-hover:text-blue-700 transition-colors truncate">
+                      {item.action}
+                    </p>
+                    <p className="text-[12px] text-slate-400 truncate mt-0.5">{item.detail}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className={cn(
+                      'chip text-[11px]',
+                      item.status === 'success' ? 'chip-completed' :
+                      item.status === 'warning' ? 'chip-cancelled' :
+                      item.status === 'pending' ? 'chip-pending' : 'chip-open'
+                    )}>
+                      <CircleDot className="h-2.5 w-2.5" />
+                      {item.status}
+                    </span>
+                    <p className="text-[11px] text-slate-400 mt-1">{item.time}</p>
+                  </div>
+                  <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </div>
+              )
+            })}
           </div>
         </div>
 
-        {/* RIGHT: Sidebar Widgets */}
-        <div className="space-y-6">
-          
-          {/* Profile Completion */}
-          <div className="border border-slate-200 rounded-xl bg-white p-5">
-            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600 mb-4">Profile Completion</h3>
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-semibold text-slate-700">{completion}%</span>
-                <span className="text-xs font-bold text-slate-500">{completion >= 80 ? '✓ Complete' : 'In Progress'}</span>
+        {/* Right sidebar: Performance + Profile */}
+        <div className="space-y-5">
+
+          {/* Performance Metrics */}
+          <div className="bg-white rounded-xl border border-border shadow-xs overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-50">
+                  <BarChart3 className="h-4 w-4 text-purple-600" />
+                </div>
+                <div>
+                  <h3 className="text-[15px] font-semibold text-slate-900">Performance</h3>
+                  <p className="text-[12px] text-slate-400">This month</p>
+                </div>
               </div>
-              <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
-                <div 
-                  className="h-full rounded-full bg-blue-600 transition-all duration-300"
-                  style={{ width: `${completion}%` }}
-                />
-              </div>
+            </div>
+            <div className="p-5 space-y-4">
+              {performanceMetrics.map(m => (
+                <div key={m.label}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[13px] font-medium text-slate-600">{m.label}</span>
+                    <span className="text-[13px] font-bold" style={{ color: m.color }}>
+                      {m.display || `${m.value}%`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${m.value}%`, backgroundColor: m.color }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Performance Metrics */}
-          <div className="border border-slate-200 rounded-xl bg-white p-5">
-            <h3 className="text-sm font-bold uppercase tracking-wide text-slate-600 mb-4">Performance</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-700">Bid Success Rate</span>
-                  <span className="text-sm font-bold text-emerald-600">{bidSuccessRate}%</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
-                  <div className="h-full rounded-full bg-emerald-600" style={{ width: `${bidSuccessRate}%` }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-700">Order Completion</span>
-                  <span className="text-sm font-bold text-blue-600">85%</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
-                  <div className="h-full rounded-full bg-blue-600" style={{ width: '85%' }} />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-slate-700">Average Rating</span>
-                  <span className="text-sm font-bold text-amber-600">{profile.rating}/5.0</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
-                  <div className="h-full rounded-full bg-amber-600" style={{ width: `${(profile.rating / 5) * 100}%` }} />
-                </div>
-              </div>
+          {/* Profile Completion */}
+          <div className="bg-white rounded-xl border border-border shadow-xs p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[13px] font-semibold text-slate-500 uppercase tracking-wide">Profile Completion</h3>
+              <span className={cn(
+                'text-[11px] font-bold px-2 py-0.5 rounded-full',
+                completion >= 80 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
+              )}>
+                {completion >= 80 ? '✓ Complete' : 'In Progress'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-[24px] font-bold text-slate-900">{completion}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                style={{ width: `${completion}%` }}
+              />
             </div>
           </div>
 
           {/* Quick Stats */}
-          <div className="border border-slate-200 rounded-xl bg-white p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-700">Total Orders</span>
-              <span className="text-lg font-bold text-slate-900">{profile.ordersCount || 0}</span>
-            </div>
-            <div className="h-px bg-slate-100" />
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-700">Total Earned</span>
-              <span className="text-lg font-bold text-emerald-600">$24,500</span>
-            </div>
-            <div className="h-px bg-slate-100" />
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-slate-700">Pending Invoices</span>
-              <span className="text-lg font-bold text-amber-600">$0</span>
+          <div className="bg-white rounded-xl border border-border shadow-xs overflow-hidden">
+            <div className="divide-y divide-slate-50">
+              {[
+                { label: 'Total Orders', value: profile.ordersCount || 0, icon: ClipboardList, accent: '#2563EB' },
+                { label: 'Vendor Rating', value: `${profile.rating}⭐`, icon: Award, accent: '#D97706' },
+                { label: 'Categories', value: profile.categories?.length || 0, icon: FileText, accent: '#7C3AED' },
+              ].map(s => (
+                <div key={s.label} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/70 transition-colors cursor-default">
+                  <div
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                    style={{ backgroundColor: s.accent + '15' }}
+                  >
+                    <s.icon className="h-4 w-4" style={{ color: s.accent }} />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-[12px] text-slate-400">{s.label}</p>
+                  </div>
+                  <p className="text-[15px] font-bold text-slate-900">{s.value}</p>
+                </div>
+              ))}
             </div>
           </div>
-
         </div>
+      </div>
+
+      {/* ── Quick stats footer ─────────────────────────── */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[
+          { label: 'Avg. Response Time', value: '1.8d', sub: 'Days to first bid', accent: '#2563EB', icon: Clock },
+          { label: 'Total Earned',       value: '$24.5K', sub: 'This quarter',     accent: '#16A34A', icon: DollarSign },
+          { label: 'Pending Invoices',   value: '$0',    sub: 'All settled',       accent: '#7C3AED', icon: BarChart3 },
+        ].map(s => (
+          <div key={s.label} className="bg-white rounded-xl border border-border shadow-xs p-5 flex items-center gap-4 hover:shadow-sm hover:-translate-y-px transition-all duration-150 cursor-default">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+              style={{ backgroundColor: s.accent + '15' }}
+            >
+              <s.icon className="h-5 w-5" style={{ color: s.accent }} />
+            </div>
+            <div>
+              <p className="text-[24px] font-bold text-slate-900 leading-none">{s.value}</p>
+              <p className="text-[12px] font-medium text-slate-500 mt-1">{s.label}</p>
+              <p className="text-[11px] text-slate-400">{s.sub}</p>
+            </div>
+          </div>
+        ))}
       </div>
 
       {selectedRfq && (
