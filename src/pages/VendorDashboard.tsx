@@ -2,7 +2,8 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   ClipboardList, Send, CheckCircle, Clock, Target, Award,
   TrendingUp, TrendingDown, ArrowRight, AlertTriangle,
-  FileText, BarChart3, CircleDot, Loader2, DollarSign
+  FileText, BarChart3, CircleDot, Loader2, DollarSign,
+  Zap
 } from 'lucide-react'
 import { useEffect, useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -15,6 +16,57 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, AreaChart, Area, Legend
 } from 'recharts'
+
+// ── Skeleton loader ────────────────────────────────────────────────────────────
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn('animate-pulse rounded-xl bg-slate-100', className)} />
+}
+
+// ── Custom tooltip ────────────────────────────────────────────────────────────
+function ChartTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-white border border-slate-100 rounded-xl shadow-lg px-3 py-2.5 text-[12px]">
+      {label && <p className="font-semibold text-slate-600 mb-1.5">{label}</p>}
+      {payload.map((p: any, i: number) => (
+        <div key={i} className="flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: p.color || p.fill }} />
+          <span className="text-slate-500">{p.name}:</span>
+          <span className="font-bold text-slate-900">{typeof p.value === 'number' ? p.value.toLocaleString() : p.value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ── Helper: group bids by month ───────────────────────────────────────────────
+function groupBidsByMonth(rfqs: any[]) {
+  const months: Record<string, { month: string; submitted: number; accepted: number; revenue: number }> = {}
+  const now = new Date()
+
+  // Init last 6 months
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    const key = d.toISOString().slice(0, 7)
+    const label = d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+    months[key] = { month: label, submitted: 0, accepted: 0, revenue: 0 }
+  }
+
+  rfqs.forEach((r: any) => {
+    const bid = r.myBid
+    if (!bid) return
+    const key = r.createdAt?.slice(0, 7)
+    if (key && months[key]) {
+      months[key].submitted += 1
+      if (bid.status === 'accepted') {
+        months[key].accepted += 1
+        months[key].revenue += parseFloat(bid.price || 0)
+      }
+    }
+  })
+
+  return Object.values(months)
+}
 
 // ── KPI Card (matching client portal pattern) ──────────────────────────────────
 interface KpiCardProps {
@@ -110,7 +162,28 @@ export default function VendorDashboard() {
         certifications: ['ARAMCO', 'Third-Party'],
       })
     })
-  }, [])
+  }, [token])
+
+  // Fetch all vendor RFQs
+  const { data: vendorRfqs = [], isLoading: rfqLoading } = useQuery({
+    queryKey: ['vendor-rfqs'],
+    queryFn: async () => { const { data } = await api.get('/rfq/vendor-rfqs'); return data },
+    staleTime: 30_000,
+  })
+
+  // Fetch all orders to find ones based on my bids
+  const { data: orders = [], isLoading: orderLoading } = useQuery({
+    queryKey: ['orders'],
+    queryFn: async () => { const { data } = await api.get('/orders/history'); return data },
+    staleTime: 30_000,
+  })
+
+  // Fetch notifications for unread count
+  const { data: notifData } = useQuery({
+    queryKey: ['notif-count'],
+    queryFn: async () => { const { data } = await api.get('/notifications/unread-count'); return data },
+    staleTime: 15_000,
+  })
 
   useEffect(() => {
     if (!socket) return
@@ -128,32 +201,55 @@ export default function VendorDashboard() {
       socket.off('notification:new', onNewRfq)
       socket.off('order:created', onOrderCreated)
     }
-  }, [socket])
-
-  const { data: vendorRfqs = [] } = useQuery({
-    queryKey: ['vendor-rfqs'],
-    queryFn: async () => { const { data } = await api.get('/rfq/vendor-rfqs'); return data },
-  })
-
-  if (!profile) return (
-    <div className="flex h-screen items-center justify-center bg-background">
-      <div className="flex flex-col items-center gap-4">
-        <Loader2 className="animate-spin h-8 w-8 text-primary" />
-        <p className="text-sm font-semibold text-muted-foreground">Loading your dashboard…</p>
-      </div>
-    </div>
-  )
+  }, [socket, queryClient])
 
   const openRfqs = vendorRfqs.length
   const pendingBids = vendorRfqs.filter((r: any) => r.myBid?.status === 'pending').length
   const acceptedBids = vendorRfqs.filter((r: any) => r.myBid?.status === 'accepted').length
+  const rejectedBids = vendorRfqs.filter((r: any) => r.myBid?.status === 'rejected').length
+  const expiredBids = vendorRfqs.filter((r: any) => r.myBid?.status === 'expired').length
+  
   const bidSuccessRate = openRfqs > 0 ? Math.round((acceptedBids / openRfqs) * 100) : 0
+  
+  // Calculate total earned from accepted bids (orders)
+  const totalEarned = orders
+    .filter((o: any) => o.vendorId === user?.id && o.status !== 'cancelled')
+    .reduce((sum: number, o: any) => sum + parseFloat(o.bid?.price || 0), 0)
+  
+  // Pending invoices (orders not yet paid)
+  const pendingInvoices = orders
+    .filter((o: any) => o.vendorId === user?.id && o.status === 'completed')
+    .reduce((sum: number, o: any) => sum + parseFloat(o.bid?.price || 0), 0)
+  
+  // Order completion rate
+  const completedOrders = orders.filter((o: any) => o.vendorId === user?.id && o.status === 'completed').length
+  const totalMyOrders = orders.filter((o: any) => o.vendorId === user?.id).length
+  const completionRate = totalMyOrders > 0 ? Math.round((completedOrders / totalMyOrders) * 100) : 0
 
-  const completion = Math.min(
+  // ── Loading state and chart data ────────────────────────────────────────────
+  const isLoading = rfqLoading || orderLoading
+  
+  const bidAnalyticsData = groupBidsByMonth(vendorRfqs)
+  
+  const bidStatusData = [
+    { name: 'Accepted', value: acceptedBids, fill: '#16A34A' },
+    { name: 'Pending', value: pendingBids, fill: '#7C3AED' },
+    { name: 'Rejected', value: rejectedBids, fill: '#EF4444' },
+    { name: 'Expired', value: expiredBids, fill: '#94A3B8' },
+  ].filter(d => d.value > 0)
+  
+  const tooltipStyle = {
+    backgroundColor: 'white',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+  }
+
+  const completion = profile ? Math.min(
     [profile.companyName && 20, profile.phone && 15,
     (profile.categories?.length > 0) && 20, profile.rating > 0 && 15,
     (profile.certifications?.length > 0) && 15, profile.experienceYears > 0 && 15]
-      .filter(Boolean).reduce((a: number, b: any) => a + b, 0), 100)
+      .filter(Boolean).reduce((a: number, b: any) => a + b, 0), 100) : 0
 
   const openBidModal = (rfq: any) => {
     setSelectedRfq(rfq)
@@ -168,7 +264,7 @@ export default function VendorDashboard() {
       footnote: 'Awaiting your bid',
       accent: '#2563EB',
       icon: ClipboardList,
-      trend: { value: 12, positive: true },
+      trend: acceptedBids > 0 ? { value: Math.round((acceptedBids / Math.max(openRfqs, 1)) * 100), positive: true } : undefined,
     },
     {
       label: 'Active Bids',
@@ -184,7 +280,7 @@ export default function VendorDashboard() {
       footnote: 'Orders confirmed',
       accent: '#16A34A',
       icon: CheckCircle,
-      trend: { value: 8, positive: true },
+      trend: acceptedBids > 0 ? { value: Math.min(acceptedBids * 10, 99), positive: true } : undefined,
     },
     {
       label: 'Success Rate',
@@ -196,27 +292,48 @@ export default function VendorDashboard() {
   ]
 
   // ── Activity feed ────────────────────────────────────────────────────────────
-  const activities = [
-    { action: 'New RFQ received',       detail: 'Cranes required for construction project',    time: '2h ago',  status: 'new' },
-    { action: 'Bid accepted',           detail: 'Excavator rental approved by client',         time: '5h ago',  status: 'success' },
-    { action: 'RFQ expires soon',       detail: 'Tower Crane 150 Ton — 2 hours remaining',    time: '22h ago', status: 'warning' },
-    { action: 'Bid submitted',          detail: 'Mobile Crane — Gulf Construction',            time: '1d ago',  status: 'pending' },
-  ]
+  const recentActivity = [
+    ...vendorRfqs.slice(0, 2).map((rfq: any) => ({
+      action: 'RFQ Received',
+      detail: rfq.title || 'New RFQ',
+      time: rfq.createdAt || new Date().toISOString(),
+      status: rfq.myBid?.status || 'new',
+    })),
+    ...orders.filter((o: any) => o.vendorId === user?.id).slice(0, 2).map((order: any) => ({
+      action: 'Order Update',
+      detail: order.title || 'Order ' + order.id,
+      time: order.updatedAt || order.createdAt || new Date().toISOString(),
+      status: order.status,
+    })),
+  ].sort((a: any, b: any) => new Date(b.time).getTime() - new Date(a.time).getTime())
+
+  const activities = recentActivity.map((item) => ({
+    action: item.action,
+    detail: item.detail,
+    time: item.time,
+    status: item.status === 'accepted' ? 'success' : item.status === 'pending' ? 'pending' : item.status === 'rejected' ? 'warning' : 'new',
+  }))
 
   // ── Performance metrics ──────────────────────────────────────────────────────
   const performanceMetrics = [
     { label: 'Bid Success Rate', value: bidSuccessRate, color: '#16A34A' },
-    { label: 'Order Completion', value: 85, color: '#2563EB' },
-    { label: 'Average Rating', value: Math.round((profile.rating / 5) * 100), color: '#D97706', display: `${profile.rating}/5.0` },
+    { label: 'Order Completion', value: completionRate, color: '#2563EB' },
+    { label: 'Average Rating', value: Math.round(((profile?.rating || 0) / 5) * 100), color: '#D97706', display: `${profile?.rating || 0}/5.0` },
   ]
 
   return (
     <div className="space-y-7 animate-reveal">
 
       {/* ── KPI Strip ─────────────────────────────────── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {kpis.map(kpi => <KpiCard key={kpi.label} {...kpi} />)}
-      </div>
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[0,1,2,3].map(i => <Skeleton key={i} className="h-[100px]" />)}
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {kpis.map(kpi => <KpiCard key={kpi.label} {...kpi} />)}
+        </div>
+      )}
 
       {/* ── Hero banner ───────────────────────────────── */}
       <div className="relative overflow-hidden rounded-xl bg-primary px-8 py-6 flex items-center justify-between gap-6">
@@ -227,10 +344,19 @@ export default function VendorDashboard() {
         <div className="relative z-10">
           <h2 className="text-[20px] font-bold text-primary-foreground leading-tight">Bid & Quote Overview</h2>
           <p className="text-blue-100 text-sm mt-1 max-w-md">
-            You have {openRfqs} active RFQs, {acceptedBids} accepted bids, and a {bidSuccessRate}% success rate this month.
+            {isLoading
+              ? 'Loading live data…'
+              : `You have ${openRfqs} active RFQ${openRfqs !== 1 ? 's' : ''}, ${acceptedBids} accepted bid${acceptedBids !== 1 ? 's' : ''}, and a ${bidSuccessRate}% success rate.`
+            }
           </p>
         </div>
         <div className="relative z-10 flex items-center gap-3 shrink-0">
+          {notifData?.count > 0 && (
+            <div className="flex items-center gap-2 bg-white/15 border border-white/20 rounded-lg px-3 py-2">
+              <Zap className="h-4 w-4 text-yellow-300" />
+              <span className="text-white text-sm font-semibold">{notifData.count} new notifications</span>
+            </div>
+          )}
           <button className="flex items-center gap-2 h-10 px-5 rounded-lg bg-white/15 hover:bg-white/25 border border-white/20 text-white text-sm font-semibold transition-all duration-150">
             Export Report
           </button>
@@ -257,40 +383,32 @@ export default function VendorDashboard() {
             </div>
           </div>
           <div className="p-5">
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={[
-                { month: 'Nov', submitted: 8, accepted: 5, revenue: 12400 },
-                { month: 'Dec', submitted: 12, accepted: 7, revenue: 18200 },
-                { month: 'Jan', submitted: 10, accepted: 6, revenue: 15800 },
-                { month: 'Feb', submitted: 15, accepted: 9, revenue: 22100 },
-                { month: 'Mar', submitted: 11, accepted: 8, revenue: 19500 },
-                { month: 'Apr', submitted: 14, accepted: 10, revenue: 24500 },
-              ]} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gradSubmitted" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#2563EB" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
-                  </linearGradient>
-                  <linearGradient id="gradAccepted" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#16A34A" stopOpacity={0.2} />
-                    <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 500 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{
-                    background: '#fff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '10px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                  }}
-                />
-                <Area type="monotone" dataKey="submitted" stroke="#2563EB" strokeWidth={2.5} fill="url(#gradSubmitted)" name="Submitted" />
-                <Area type="monotone" dataKey="accepted" stroke="#16A34A" strokeWidth={2.5} fill="url(#gradAccepted)" name="Accepted" />
+            {rfqLoading ? (
+              <Skeleton className="h-[260px]" />
+            ) : bidAnalyticsData.every(d => d.submitted === 0 && d.accepted === 0) ? (
+              <div className="flex flex-col items-center justify-center h-[260px] text-slate-400">
+                <BarChart3 className="h-10 w-10 mb-2 opacity-20" />
+                <p className="text-sm font-medium">No bid data yet</p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={bidAnalyticsData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="gradSubmitted" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#2563EB" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gradAccepted" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#16A34A" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 500 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<ChartTooltip />} contentStyle={tooltipStyle} />
+                  <Area type="monotone" dataKey="submitted" stroke="#2563EB" strokeWidth={2.5} fill="url(#gradSubmitted)" name="Submitted" />
+                  <Area type="monotone" dataKey="accepted" stroke="#16A34A" strokeWidth={2.5} fill="url(#gradAccepted)" name="Accepted" />
                 <Legend
                   iconType="circle"
                   iconSize={8}
@@ -298,6 +416,7 @@ export default function VendorDashboard() {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -315,57 +434,44 @@ export default function VendorDashboard() {
             </div>
           </div>
           <div className="p-5 flex flex-col items-center">
-            <ResponsiveContainer width="100%" height={180}>
-              <PieChart>
-                <Pie
-                  data={[
-                    { name: 'Accepted', value: 42 },
-                    { name: 'Pending', value: 18 },
-                    { name: 'Rejected', value: 12 },
-                    { name: 'Expired', value: 6 },
-                  ]}
-                  cx="50%" cy="50%"
-                  innerRadius={50} outerRadius={75}
-                  paddingAngle={3}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {[
-                    { color: '#16A34A' },
-                    { color: '#F59E0B' },
-                    { color: '#DC2626' },
-                    { color: '#94A3B8' },
-                  ].map((entry, idx) => (
-                    <Cell key={idx} fill={entry.color} />
+            {rfqLoading ? (
+              <Skeleton className="h-[180px]" />
+            ) : bidStatusData.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-[180px] text-slate-400">
+                <Target className="h-10 w-10 mb-2 opacity-20" />
+                <p className="text-sm font-medium">No bids yet</p>
+              </div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={180}>
+                  <PieChart>
+                    <Pie
+                      data={bidStatusData}
+                      cx="50%" cy="50%"
+                      innerRadius={50} outerRadius={75}
+                      paddingAngle={3}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {bidStatusData.map((entry, idx) => (
+                        <Cell key={idx} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<ChartTooltip />} contentStyle={tooltipStyle} />
+                  </PieChart>
+                </ResponsiveContainer>
+                {/* Legend */}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-2 w-full">
+                  {bidStatusData.map(item => (
+                    <div key={item.name} className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.fill }} />
+                      <span className="text-[12px] text-slate-500 flex-1">{item.name}</span>
+                      <span className="text-[12px] font-bold text-slate-700">{item.value}</span>
+                    </div>
                   ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: '#fff',
-                    border: '1px solid #e2e8f0',
-                    borderRadius: '10px',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-                    fontSize: '13px',
-                    fontWeight: 600,
-                  }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            {/* Legend */}
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-2 w-full">
-              {[
-                { label: 'Accepted', color: '#16A34A', value: 42 },
-                { label: 'Pending', color: '#F59E0B', value: 18 },
-                { label: 'Rejected', color: '#DC2626', value: 12 },
-                { label: 'Expired', color: '#94A3B8', value: 6 },
-              ].map(item => (
-                <div key={item.label} className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                  <span className="text-[12px] text-slate-500 flex-1">{item.label}</span>
-                  <span className="text-[12px] font-bold text-slate-700">{item.value}</span>
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -487,9 +593,9 @@ export default function VendorDashboard() {
           <div className="bg-white rounded-xl border border-border shadow-xs overflow-hidden">
             <div className="divide-y divide-slate-50">
               {[
-                { label: 'Total Orders', value: profile.ordersCount || 0, icon: ClipboardList, accent: '#2563EB' },
-                { label: 'Vendor Rating', value: `${profile.rating}⭐`, icon: Award, accent: '#D97706' },
-                { label: 'Categories', value: profile.categories?.length || 0, icon: FileText, accent: '#7C3AED' },
+                { label: 'Total Orders', value: profile?.ordersCount || 0, icon: ClipboardList, accent: '#2563EB' },
+                { label: 'Vendor Rating', value: `${profile?.rating || 0}⭐`, icon: Award, accent: '#D97706' },
+                { label: 'Categories', value: profile?.categories?.length || 0, icon: FileText, accent: '#7C3AED' },
               ].map(s => (
                 <div key={s.label} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/70 transition-colors cursor-default">
                   <div
@@ -513,8 +619,8 @@ export default function VendorDashboard() {
       <div className="grid gap-4 sm:grid-cols-3">
         {[
           { label: 'Avg. Response Time', value: '1.8d', sub: 'Days to first bid', accent: '#2563EB', icon: Clock },
-          { label: 'Total Earned',       value: '$24.5K', sub: 'This quarter',     accent: '#16A34A', icon: DollarSign },
-          { label: 'Pending Invoices',   value: '$0',    sub: 'All settled',       accent: '#7C3AED', icon: BarChart3 },
+          { label: 'Total Earned',       value: `$${totalEarned >= 1000 ? (totalEarned / 1000).toFixed(1) + 'K' : totalEarned.toLocaleString()}`, sub: 'From accepted bids',     accent: '#16A34A', icon: DollarSign },
+          { label: 'Pending Invoices',   value: `$${pendingInvoices >= 1000 ? (pendingInvoices / 1000).toFixed(1) + 'K' : pendingInvoices.toLocaleString()}`,    sub: 'Completed orders',       accent: '#7C3AED', icon: BarChart3 },
         ].map(s => (
           <div key={s.label} className="bg-white rounded-xl border border-border shadow-xs p-5 flex items-center gap-4 hover:shadow-sm hover:-translate-y-px transition-all duration-150 cursor-default">
             <div
