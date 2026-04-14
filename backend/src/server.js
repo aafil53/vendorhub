@@ -77,7 +77,10 @@ const PORT = process.env.PORT || 5000;
   try {
     await sequelize.authenticate();
     console.log('Database connection established.');
-    await sequelize.sync({ alter: true });
+    // ⚡ Use sync({ force: false }) instead of alter: true
+    // This avoids expensive schema introspection on every startup
+    // For new tables, use migrations instead
+    await sequelize.sync({ force: false });
     console.log('Models synchronized.');
     startRfqAutoClose(); // start after DB is ready
     server.listen(PORT, '0.0.0.0', () => {

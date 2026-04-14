@@ -5,10 +5,12 @@ import path from "path";
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
-    host: "::",
+    host: "127.0.0.1",
     port: 5173,
     hmr: {
-      overlay: false,
+      host: "localhost",
+      port: 5173,
+      protocol: "ws",
     },
     proxy: {
       '/api': 'http://127.0.0.1:5000'
