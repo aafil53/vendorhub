@@ -11,6 +11,10 @@ import { BidSubmissionModal } from '@/components/bidding/BidSubmissionModal'
 import { toast } from 'sonner'
 import { useSocket } from '@/hooks/useSocket'
 import { cn } from '@/lib/utils'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, AreaChart, Area, Legend
+} from 'recharts'
 
 // ── KPI Card (matching client portal pattern) ──────────────────────────────────
 interface KpiCardProps {
@@ -233,6 +237,136 @@ export default function VendorDashboard() {
           <button className="flex items-center gap-2 h-10 px-5 rounded-lg bg-white text-blue-700 text-sm font-bold hover:bg-blue-50 shadow-sm transition-all duration-150">
             View All RFQs
           </button>
+        </div>
+      </div>
+
+      {/* ── Charts Section ─────────────────────────────── */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_340px]">
+
+        {/* Monthly Bid Analytics — Area Chart */}
+        <div className="bg-white rounded-xl border border-border shadow-xs overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50">
+                <BarChart3 className="h-4 w-4 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-slate-900">Bid Analytics</h3>
+                <p className="text-[12px] text-slate-400">Monthly overview — last 6 months</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-5">
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={[
+                { month: 'Nov', submitted: 8, accepted: 5, revenue: 12400 },
+                { month: 'Dec', submitted: 12, accepted: 7, revenue: 18200 },
+                { month: 'Jan', submitted: 10, accepted: 6, revenue: 15800 },
+                { month: 'Feb', submitted: 15, accepted: 9, revenue: 22100 },
+                { month: 'Mar', submitted: 11, accepted: 8, revenue: 19500 },
+                { month: 'Apr', submitted: 14, accepted: 10, revenue: 24500 },
+              ]} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gradSubmitted" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#2563EB" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gradAccepted" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#16A34A" stopOpacity={0.2} />
+                    <stop offset="95%" stopColor="#16A34A" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 12, fontWeight: 500 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    background: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '10px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                  }}
+                />
+                <Area type="monotone" dataKey="submitted" stroke="#2563EB" strokeWidth={2.5} fill="url(#gradSubmitted)" name="Submitted" />
+                <Area type="monotone" dataKey="accepted" stroke="#16A34A" strokeWidth={2.5} fill="url(#gradAccepted)" name="Accepted" />
+                <Legend
+                  iconType="circle"
+                  iconSize={8}
+                  wrapperStyle={{ fontSize: '12px', fontWeight: 600, paddingTop: '12px' }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Bid Status Breakdown — Donut Chart */}
+        <div className="bg-white rounded-xl border border-border shadow-xs overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-50">
+                <Target className="h-4 w-4 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-semibold text-slate-900">Bid Status</h3>
+                <p className="text-[12px] text-slate-400">All-time breakdown</p>
+              </div>
+            </div>
+          </div>
+          <div className="p-5 flex flex-col items-center">
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie
+                  data={[
+                    { name: 'Accepted', value: 42 },
+                    { name: 'Pending', value: 18 },
+                    { name: 'Rejected', value: 12 },
+                    { name: 'Expired', value: 6 },
+                  ]}
+                  cx="50%" cy="50%"
+                  innerRadius={50} outerRadius={75}
+                  paddingAngle={3}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {[
+                    { color: '#16A34A' },
+                    { color: '#F59E0B' },
+                    { color: '#DC2626' },
+                    { color: '#94A3B8' },
+                  ].map((entry, idx) => (
+                    <Cell key={idx} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    background: '#fff',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '10px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+            {/* Legend */}
+            <div className="grid grid-cols-2 gap-x-6 gap-y-2 mt-2 w-full">
+              {[
+                { label: 'Accepted', color: '#16A34A', value: 42 },
+                { label: 'Pending', color: '#F59E0B', value: 18 },
+                { label: 'Rejected', color: '#DC2626', value: 12 },
+                { label: 'Expired', color: '#94A3B8', value: 6 },
+              ].map(item => (
+                <div key={item.label} className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                  <span className="text-[12px] text-slate-500 flex-1">{item.label}</span>
+                  <span className="text-[12px] font-bold text-slate-700">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
