@@ -11,6 +11,10 @@ import { BidSubmissionModal } from '@/components/bidding/BidSubmissionModal'
 import { toast } from 'sonner'
 import { useSocket } from '@/hooks/useSocket'
 import { cn } from '@/lib/utils'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, AreaChart, Area, Legend
+} from 'recharts'
 
 // ── KPI Card (matching client portal pattern) ──────────────────────────────────
 interface KpiCardProps {
