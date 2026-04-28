@@ -247,8 +247,12 @@ export default function RFQInbox() {
   const stats = {
     total:    rfqsWithStatus.length,
     newCount: rfqsWithStatus.filter((r: any) => r.vendorStatus === "new").length,
-    quoted:   rfqsWithStatus.filter((r: any) => r.vendorStatus === "quoted").length,
     accepted: rfqsWithStatus.filter((r: any) => r.vendorStatus === "accepted").length,
+    expiring: rfqsWithStatus.filter((r: any) => {
+      if (!r.deadline) return false;
+      const diff = new Date(r.deadline).getTime() - Date.now();
+      return diff > 0 && diff < 86_400_000;
+    }).length,
   };
 
   const openBidModal = (rfq: any) => {
@@ -262,7 +266,7 @@ export default function RFQInbox() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">RFQ Inbox</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Review and respond to incoming requests for quotation</p>
+          <p className="text-sm text-gray-500 mt-0.5">Active RFQs awaiting your response. Submitted bids appear in Quotations.</p>
         </div>
         <div className="flex items-center gap-2">
           {stats.newCount > 0 && (
