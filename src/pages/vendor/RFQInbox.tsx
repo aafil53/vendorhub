@@ -247,8 +247,12 @@ export default function RFQInbox() {
   const stats = {
     total:    rfqsWithStatus.length,
     newCount: rfqsWithStatus.filter((r: any) => r.vendorStatus === "new").length,
-    quoted:   rfqsWithStatus.filter((r: any) => r.vendorStatus === "quoted").length,
     accepted: rfqsWithStatus.filter((r: any) => r.vendorStatus === "accepted").length,
+    expiring: rfqsWithStatus.filter((r: any) => {
+      if (!r.deadline) return false;
+      const diff = new Date(r.deadline).getTime() - Date.now();
+      return diff > 0 && diff < 86_400_000;
+    }).length,
   };
 
   const openBidModal = (rfq: any) => {
@@ -262,7 +266,7 @@ export default function RFQInbox() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">RFQ Inbox</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Review and respond to incoming requests for quotation</p>
+          <p className="text-sm text-gray-500 mt-0.5">Active RFQs awaiting your response. Submitted bids appear in Quotations.</p>
         </div>
         <div className="flex items-center gap-2">
           {stats.newCount > 0 && (
@@ -289,10 +293,10 @@ export default function RFQInbox() {
       {/* Stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total RFQs", val: stats.total,    border: "border-l-gray-400" },
+          { label: "Total Active", val: stats.total,    border: "border-l-gray-400" },
           { label: "New",        val: stats.newCount,  border: "border-l-blue-500" },
-          { label: "Quoted",     val: stats.quoted,    border: "border-l-purple-500" },
           { label: "Accepted",   val: stats.accepted,  border: "border-l-green-500" },
+          { label: "Expiring <24h", val: stats.expiring, border: "border-l-amber-500" },
         ].map(({ label, val, border }) => (
           <Card key={label} className={`border-l-4 ${border} shadow-none`}>
             <CardContent className="p-4">
@@ -325,10 +329,6 @@ export default function RFQInbox() {
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="new">New</SelectItem>
               <SelectItem value="accepted">Accepted</SelectItem>
-              <SelectItem value="quoted">Quoted</SelectItem>
-              <SelectItem value="won">Won</SelectItem>
-              <SelectItem value="declined">Declined</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
