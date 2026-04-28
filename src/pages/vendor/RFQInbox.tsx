@@ -293,10 +293,10 @@ export default function RFQInbox() {
       {/* Stats strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total RFQs", val: stats.total,    border: "border-l-gray-400" },
+          { label: "Total Active", val: stats.total,    border: "border-l-gray-400" },
           { label: "New",        val: stats.newCount,  border: "border-l-blue-500" },
-          { label: "Quoted",     val: stats.quoted,    border: "border-l-purple-500" },
           { label: "Accepted",   val: stats.accepted,  border: "border-l-green-500" },
+          { label: "Expiring <24h", val: stats.expiring, border: "border-l-amber-500" },
         ].map(({ label, val, border }) => (
           <Card key={label} className={`border-l-4 ${border} shadow-none`}>
             <CardContent className="p-4">
@@ -329,10 +329,6 @@ export default function RFQInbox() {
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="new">New</SelectItem>
               <SelectItem value="accepted">Accepted</SelectItem>
-              <SelectItem value="quoted">Quoted</SelectItem>
-              <SelectItem value="won">Won</SelectItem>
-              <SelectItem value="declined">Declined</SelectItem>
-              <SelectItem value="closed">Closed</SelectItem>
             </SelectContent>
           </Select>
         </CardContent>
