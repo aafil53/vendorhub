@@ -15,7 +15,7 @@ import { downloadAuthedBlob } from "@/lib/downloadFile";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type BidStatus = "draft" | "submitted" | "revised" | "won" | "lost";
+type BidStatus = "submitted" | "won" | "lost";
 
 interface VendorBid {
   bidId: number;
@@ -34,11 +34,9 @@ interface VendorBid {
 }
 
 const STATUS_CFG: Record<BidStatus, { label: string; dot: string; text: string; bg: string }> = {
-  draft:     { label: "Draft",     dot: "bg-gray-400",    text: "text-gray-600",    bg: "bg-gray-50" },
-  submitted: { label: "Submitted", dot: "bg-blue-500",    text: "text-blue-700",    bg: "bg-blue-50" },
-  revised:   { label: "Revised",   dot: "bg-amber-500",   text: "text-amber-700",   bg: "bg-amber-50" },
-  won:       { label: "Won",       dot: "bg-green-500",   text: "text-green-700",   bg: "bg-green-50" },
-  lost:      { label: "Lost",      dot: "bg-red-500",     text: "text-red-700",     bg: "bg-red-50" },
+  submitted: { label: "Pending", dot: "bg-blue-500",    text: "text-blue-700",    bg: "bg-blue-50" },
+  won:       { label: "Won",     dot: "bg-green-500",   text: "text-green-700",   bg: "bg-green-50" },
+  lost:      { label: "Lost",    dot: "bg-red-500",     text: "text-red-700",     bg: "bg-red-50" },
 };
 
 function fmtDate(d?: string | Date | null) {
@@ -81,13 +79,13 @@ export default function Quotations() {
     refetchInterval: 30_000,
   });
 
+  // Show all bids as transaction history (submitted, won, lost)
+  const transactionBids = bids;
   const counts = {
-    all: bids.length,
-    draft: bids.filter((b) => b.status === "draft").length,
-    submitted: bids.filter((b) => b.status === "submitted").length,
-    revised: bids.filter((b) => b.status === "revised").length,
-    won: bids.filter((b) => b.status === "won").length,
-    lost: bids.filter((b) => b.status === "lost").length,
+    all: transactionBids.length,
+    submitted: transactionBids.filter((b) => b.status === "submitted").length,
+    won: transactionBids.filter((b) => b.status === "won").length,
+    lost: transactionBids.filter((b) => b.status === "lost").length,
   };
 
   const winRate = counts.won + counts.lost > 0
@@ -95,13 +93,13 @@ export default function Quotations() {
     : "—";
 
   const stats = [
-    { label: "Total Bids",  val: counts.all,        icon: FileText,     border: "border-l-indigo-500", iconBg: "bg-indigo-50",  iconColor: "text-indigo-600" },
-    { label: "Won",         val: counts.won,        icon: CheckCircle2, border: "border-l-green-500",  iconBg: "bg-green-50",   iconColor: "text-green-600" },
-    { label: "In Progress", val: counts.submitted + counts.revised + counts.draft, icon: Clock, border: "border-l-blue-500", iconBg: "bg-blue-50", iconColor: "text-blue-600" },
-    { label: "Win Rate",    val: winRate,           icon: TrendingUp,   border: "border-l-amber-500",  iconBg: "bg-amber-50",   iconColor: "text-amber-600" },
+    { label: "Total Transactions", val: counts.all,        icon: FileText,     border: "border-l-indigo-500", iconBg: "bg-indigo-50",  iconColor: "text-indigo-600" },
+    { label: "Won",                val: counts.won,        icon: CheckCircle2, border: "border-l-green-500",  iconBg: "bg-green-50",  iconColor: "text-green-600" },
+    { label: "Lost",               val: counts.lost,       icon: XCircle,      border: "border-l-red-500",    iconBg: "bg-red-50",    iconColor: "text-red-600" },
+    { label: "Win Rate",           val: winRate,           icon: TrendingUp,   border: "border-l-amber-500",  iconBg: "bg-amber-50",  iconColor: "text-amber-600" },
   ];
 
-  const filtered = bids.filter((b) => {
+  const filtered = transactionBids.filter((b) => {
     const s = search.trim().toLowerCase();
     const matchSearch = !s ||
       b.quoteId.toLowerCase().includes(s) ||
@@ -112,10 +110,8 @@ export default function Quotations() {
   });
 
   const filterTabs: Array<{ key: BidStatus | "all"; label: string }> = [
-    { key: "all",       label: "All Quotations" },
-    { key: "draft",     label: "Draft" },
-    { key: "submitted", label: "Submitted" },
-    { key: "revised",   label: "Revised" },
+    { key: "all",       label: "All Transactions" },
+    { key: "submitted", label: "Pending" },
     { key: "won",       label: "Won" },
     { key: "lost",      label: "Lost" },
   ];
@@ -137,9 +133,9 @@ export default function Quotations() {
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Quotations</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Transaction History</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Complete history of every bid you've submitted, won or lost.
+            Complete record of all finalized deals - won and lost transactions.
           </p>
         </div>
         <Button
@@ -221,11 +217,11 @@ export default function Quotations() {
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FileText className="w-10 h-10 text-gray-300 mb-3" />
               <p className="text-sm font-semibold text-gray-700">
-                {bids.length === 0 ? "No quotations yet" : "No quotations match your filters"}
+                {transactionBids.length === 0 ? "No transaction history yet" : "No transactions match your filters"}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                {bids.length === 0
-                  ? "Submit a bid on an RFQ from the inbox and it will appear here."
+                {transactionBids.length === 0
+                  ? "Bids you submit will appear here."
                   : "Try a different filter or search term."}
               </p>
             </div>
@@ -296,15 +292,6 @@ export default function Quotations() {
                             >
                               <Eye className="w-3 h-3" /> View
                             </Button>
-                            {b.status === "draft" && (
-                              <Button
-                                size="sm"
-                                className="h-7 px-2.5 text-xs gap-1 bg-indigo-600 hover:bg-indigo-700"
-                                onClick={() => toast.info("Open the RFQ inbox to submit this draft")}
-                              >
-                                <Send className="w-3 h-3" /> Submit
-                              </Button>
-                            )}
                             <Button
                               size="sm"
                               variant="ghost"
