@@ -28,9 +28,23 @@ const Bid = sequelize.define('Bid', {
     allowNull: true,
   },
   status: {
-    type: DataTypes.ENUM('pending','accepted','rejected'),
+    type: DataTypes.ENUM(
+      'draft',        // Bid started but not submitted
+      'submitted',    // Bid sent to buyer (decision pending)
+      'revised',      // Bid resubmitted after changes
+      'accepted',     // Bid won
+      'rejected',     // Bid lost
+      'withdrawn',    // Vendor canceled bid after submission
+      'declined',     // Vendor declined RFQ (never submitted)
+      'expired'       // RFQ deadline passed, bid not submitted
+    ),
     allowNull: false,
-    defaultValue: 'pending',
+    defaultValue: 'draft',
+  },
+  declineReason: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    // Values: 'stock_unavailable', 'lead_time_incompatible', 'pricing_not_feasible', 'compliance_mismatch', or custom text
   },
 });
 

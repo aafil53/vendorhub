@@ -226,11 +226,16 @@ router.get('/vendor-rfqs', authMiddleware, requireRole(['vendor']), async (req, 
       if (!Array.isArray(parsedAcceptedVendors)) parsedAcceptedVendors = [];
 
       return {
-        id: r.id, equipmentId: r.equipmentId,
+        id: r.id, 
+        equipmentId: r.equipmentId,
         equipmentName: equipment?.name || 'Unknown',
-        clientName:    client?.name || client?.email || 'Client',
-        status: r.status, createdAt: r.createdAt,
-        deadline: r.deadline,              // ← include deadline for countdown
+        equipmentCategory: equipment?.category || null,
+        equipmentSpecs: equipment?.specs || null,
+        clientName: client?.name || client?.email || 'Client',
+        clientEmail: client?.email || null,
+        status: r.status, 
+        createdAt: r.createdAt,
+        deadline: r.deadline,
         acceptedVendors: parsedAcceptedVendors,
         myBid: null,
       };
@@ -244,10 +249,11 @@ router.get('/vendor-rfqs', authMiddleware, requireRole(['vendor']), async (req, 
 });
 
 // ─── GET /api/rfq/vendor-bids ─────────────────────────────────────────────────
-// Returns the vendor's full bid history (Submitted / Won / Lost)
+// Returns the vendor's full bid history (Draft / Submitted / Revised / Won / Lost / Withdrawn / Declined / Expired)
 router.get('/vendor-bids', authMiddleware, requireRole(['vendor']), async (req, res) => {
   try {
     const vendorId = req.user.id;
+    const now = new Date();
     const bids = await Bid.findAll({
       where: { vendorId },
       order: [['createdAt', 'DESC']],
@@ -258,11 +264,23 @@ router.get('/vendor-bids', authMiddleware, requireRole(['vendor']), async (req, 
       const equipment = rfq ? await Equipment.findByPk(rfq.equipmentId) : null;
       const client = rfq ? await User.findByPk(rfq.clientId, { attributes: ['name', 'email', 'companyName'] }) : null;
 
-      // Status mapping
-      let status = 'submitted';
-      if (b.status === 'accepted') status = 'won';
-      else if (b.status === 'rejected') status = 'lost';
-      else if (rfq && (rfq.status === 'awarded' || rfq.status === 'closed')) status = 'lost';
+      // Status mapping: use bid.status directly, with deadline-based expiry check
+      let status = b.status;
+      
+      // Handle expired bids (deadline passed but not submitted)
+      if (status === 'draft' && rfq?.deadline && new Date(rfq.deadline) < now) {
+        status = 'expired';
+      }
+      
+      // Map legacy 'accepted' → 'won', 'rejected' → 'lost' for backward compat
+      if (status === 'accepted') status = 'won';
+      else if (status === 'rejected') status = 'lost';
+      else if (status === 'pending') status = 'submitted'; // Old pending → submitted
+      
+      // Also check RFQ status: if RFQ is awarded/closed and bid not explicitly won, mark as lost
+      if ((status === 'submitted' || status === 'draft') && rfq && (rfq.status === 'awarded' || rfq.status === 'closed')) {
+        status = 'lost';
+      }
 
       return {
         bidId: b.id,
@@ -278,6 +296,7 @@ router.get('/vendor-bids', authMiddleware, requireRole(['vendor']), async (req, 
         validUntil: rfq?.deadline || null,
         status,
         rfqStatus: rfq?.status || 'unknown',
+        declineReason: b.declineReason || null,
       };
     }));
 
