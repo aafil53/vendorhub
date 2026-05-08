@@ -14,6 +14,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { useSocket } from '@/hooks/useSocket';
+import { BidResponseModal } from '@/components/bidding/BidResponseModal';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -174,6 +175,8 @@ export default function RFQInbox() {
   const [search, setSearch] = useState('');
   const [filterDeadline, setFilterDeadline] = useState('all');
   const [selectedRFQ, setSelectedRFQ] = useState<ActiveRFQ | null>(null);
+  const [bidModalOpen, setBidModalOpen] = useState(false);
+  const [bidModalRFQ, setBidModalRFQ] = useState<{ id: number; equipmentName: string; clientName: string; clientEmail?: string; deadline?: string } | null>(null);
   const [showDeclineModal, setShowDeclineModal] = useState(false);
   const [declineRFQ, setDeclineRFQ] = useState<ActiveRFQ | null>(null);
   const [declineReasonValue, setDeclineReasonValue] = useState('');
@@ -441,9 +444,17 @@ export default function RFQInbox() {
             <Button
               className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2"
               onClick={() => {
-                setSelectedRFQ(null);
-                // Navigate to bid form - will be implemented in Phase 2
-                toast.info('Bid form will open (Phase 2)');
+                if (selectedRFQ) {
+                  setBidModalRFQ({
+                    id: selectedRFQ.id,
+                    equipmentName: selectedRFQ.equipmentName,
+                    clientName: selectedRFQ.clientName,
+                    clientEmail: selectedRFQ.clientEmail || undefined,
+                    deadline: selectedRFQ.deadline || undefined,
+                  });
+                  setBidModalOpen(true);
+                  setSelectedRFQ(null);
+                }
               }}
             >
               <Zap className="w-4 h-4" />
@@ -523,6 +534,44 @@ export default function RFQInbox() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bid Modal */}
+      <BidResponseModal
+        open={bidModalOpen}
+        rfq={bidModalRFQ}
+        onClose={() => {
+          setBidModalOpen(false);
+          setBidModalRFQ(null);
+          queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] });
+        }}
+        onSubmit={async (data) => {
+          if (!bidModalRFQ) return;
+          const formData = new FormData();
+          formData.append('rfqId', String(bidModalRFQ.id));
+          formData.append('price', String(data.price));
+          formData.append('availability', data.availability);
+          if (data.certFile) {
+            formData.append('certFile', data.certFile);
+          }
+          await api.post('/bids/new/submit', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+          queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] });
+        }}
+        onSaveDraft={async (data) => {
+          if (!bidModalRFQ) return;
+          const formData = new FormData();
+          formData.append('rfqId', String(bidModalRFQ.id));
+          formData.append('price', String(data.price || 0));
+          formData.append('availability', data.availability);
+          if (data.certFile) {
+            formData.append('certFile', data.certFile);
+          }
+          await api.post('/bids/new/draft', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
+        }}
+      />
     </div>
   );
 }

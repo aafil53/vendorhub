@@ -425,8 +425,27 @@ export default function Quotations() {
               </div>
 
               {/* Actions */}
-              <div className="pt-3 flex gap-2">
-                {selected.status === "submitted" || selected.status === "revised" ? (
+              <div className="pt-3 flex gap-2 flex-col">
+                {/* Accept Bid button for submitted/revised bids */}
+                {(selected.status === "submitted" || selected.status === "revised") && (
+                  <Button
+                    className="w-full bg-green-600 hover:bg-green-700 gap-2"
+                    onClick={async () => {
+                      try {
+                        await api.post(`/bids/${selected.bidId}/accept`);
+                        toast.success("Bid accepted!");
+                        setSelected(null);
+                        queryClient.invalidateQueries({ queryKey: ["vendor-bids"] });
+                      } catch (e: any) {
+                        toast.error(e?.response?.data?.message || "Failed to accept bid");
+                      }
+                    }}
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Accept Bid
+                  </Button>
+                )}
+                {/* Withdraw button for submitted/revised bids */}
+                {(selected.status === "submitted" || selected.status === "revised") && (
                   <Button
                     variant="destructive"
                     className="w-full gap-2 bg-red-600 hover:bg-red-700"
@@ -438,7 +457,9 @@ export default function Quotations() {
                       : <LogOut className="w-4 h-4" />}
                     Withdraw Bid
                   </Button>
-                ) : selected.amount ? (
+                )}
+                {/* Download PDF for bids with amount */}
+                {selected.amount && (
                   <Button
                     className="w-full bg-indigo-600 hover:bg-indigo-700 gap-2"
                     onClick={() => handleDownload(selected)}
@@ -449,7 +470,7 @@ export default function Quotations() {
                       : <Download className="w-4 h-4" />}
                     Download PDF
                   </Button>
-                ) : null}
+                )}
               </div>
             </div>
           )}
