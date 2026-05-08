@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Loader2, Check, AlertCircle, Upload, ArrowLeft } from 'lucide-react';
+import { Loader2, Check, Upload, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -9,7 +9,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import api from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -28,21 +27,22 @@ interface BidData {
   termsConfirmed: boolean;
 }
 
+// ── Completeness Checklist ─────────────────────────────────────────────────────
+
 interface CompletenessChecklistProps {
   bidData: BidData;
 }
 
 function CompletenessChecklist({ bidData }: CompletenessChecklistProps) {
   const items = [
-    { key: 'price', label: 'Price entered', done: bidData.price !== null && bidData.price > 0 },
+    { key: 'price',        label: 'Price entered',        done: bidData.price !== null && bidData.price > 0 },
     { key: 'availability', label: 'Availability selected', done: !!bidData.availability },
-    { key: 'cert', label: 'Certification uploaded', done: !!bidData.certFile },
-    { key: 'terms', label: 'Terms confirmed', done: bidData.termsConfirmed },
+    { key: 'cert',         label: 'Certification uploaded', done: !!bidData.certFile },
+    { key: 'terms',        label: 'Terms confirmed',       done: bidData.termsConfirmed },
   ];
 
-  const completedCount = items.filter(i => i.done).length;
-  const totalCount = items.length;
-  const progressPercent = Math.round((completedCount / totalCount) * 100);
+  const completedCount  = items.filter(i => i.done).length;
+  const progressPercent = Math.round((completedCount / items.length) * 100);
 
   return (
     <div className="space-y-3">
@@ -54,7 +54,7 @@ function CompletenessChecklist({ bidData }: CompletenessChecklistProps) {
             style={{ width: `${progressPercent}%` }}
           />
         </div>
-        <p className="text-xs text-gray-500 mt-1">{completedCount}/{totalCount} complete</p>
+        <p className="text-xs text-gray-500 mt-1">{completedCount}/{items.length} complete</p>
       </div>
 
       <div className="space-y-2">
@@ -65,7 +65,7 @@ function CompletenessChecklist({ bidData }: CompletenessChecklistProps) {
               'flex items-center gap-2 p-2.5 rounded-lg transition-colors',
               item.done
                 ? 'bg-green-50 border border-green-200'
-                : 'bg-gray-50 border border-gray-200'
+                : 'bg-gray-50 border border-gray-200',
             )}
           >
             {item.done ? (
@@ -75,7 +75,7 @@ function CompletenessChecklist({ bidData }: CompletenessChecklistProps) {
             )}
             <span className={cn(
               'text-sm font-medium',
-              item.done ? 'text-green-700' : 'text-gray-600'
+              item.done ? 'text-green-700' : 'text-gray-600',
             )}>
               {item.label}
             </span>
@@ -86,6 +86,8 @@ function CompletenessChecklist({ bidData }: CompletenessChecklistProps) {
   );
 }
 
+// ── Modal ──────────────────────────────────────────────────────────────────────
+
 interface BidResponseModalProps {
   open: boolean;
   rfq: RFQDetails | null;
@@ -93,7 +95,6 @@ interface BidResponseModalProps {
   onClose: () => void;
   onSubmit: (data: BidData) => Promise<void>;
   onSaveDraft: (data: BidData) => Promise<void>;
-  isLoading?: boolean;
 }
 
 export function BidResponseModal({
@@ -103,54 +104,50 @@ export function BidResponseModal({
   onClose,
   onSubmit,
   onSaveDraft,
-  isLoading = false,
 }: BidResponseModalProps) {
-  const [step, setStep] = useState<'accept' | 'bid'>('accept');
-  const [acceptLoading, setAcceptLoading] = useState(false);
-  
+  const [step, setStep]           = useState<'accept' | 'bid'>('accept');
+  const [submitting, setSubmitting] = useState(false);
+  const [saving, setSaving]       = useState(false);
+  const [certFileName, setCertFileName] = useState<string | null>(
+    draftBidData?.certFile instanceof File ? draftBidData.certFile.name : null,
+  );
+
   const [bidData, setBidData] = useState<BidData>({
-    price: draftBidData?.price ?? null,
-    availability: draftBidData?.availability ?? '',
-    certFile: draftBidData?.certFile ?? null,
+    price:          draftBidData?.price          ?? null,
+    availability:   draftBidData?.availability   ?? '',
+    certFile:       draftBidData?.certFile       ?? null,
     termsConfirmed: draftBidData?.termsConfirmed ?? false,
   });
 
-  const [saving, setSaving] = useState(false);
-  const [certFileName, setCertFileName] = useState<string | null>(
-    draftBidData?.certFile instanceof File ? draftBidData.certFile.name : null
-  );
-
+  // Reset every time the modal is opened (or the RFQ changes)
   useEffect(() => {
     if (open) {
       setStep('accept');
+      setSubmitting(false);
+      setSaving(false);
       if (!draftBidData) {
-        setBidData({
-          price: null,
-          availability: '',
-          certFile: null,
-          termsConfirmed: false,
-        });
+        setBidData({ price: null, availability: '', certFile: null, termsConfirmed: false });
         setCertFileName(null);
       }
     }
-  }, [open, rfq, draftBidData]);
+  }, [open, rfq]); // intentionally omit draftBidData to avoid loop
 
-  const handleAccept = async () => {
-    setAcceptLoading(true);
-    try {
-      await api.post(`/bids/new/accept`, { rfqId: rfq?.id });
-      toast.success('RFQ accepted. Now fill in your bid details.');
-      setStep('bid');
-    } catch (err: any) {
-      toast.error(err?.response?.data?.error || 'Failed to accept RFQ');
-    } finally {
-      setAcceptLoading(false);
-    }
-  };
+  // ── Derived ────────────────────────────────────────────────────────────────
+
+  const isComplete =
+    bidData.price !== null &&
+    bidData.price > 0 &&
+    !!bidData.availability &&
+    bidData.termsConfirmed;
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
+
+  /** Step 1 → Step 2. No API call — acceptance is recorded on bid submit. */
+  const handleAccept = () => setStep('bid');
 
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value === '' ? null : parseFloat(e.target.value);
-    setBidData(prev => ({ ...prev, price: value }));
+    const raw = e.target.value;
+    setBidData(prev => ({ ...prev, price: raw === '' ? null : parseFloat(raw) }));
   };
 
   const handleAvailabilityChange = (value: string) => {
@@ -159,32 +156,34 @@ export function BidResponseModal({
 
   const handleCertFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('File size must be less than 5MB');
-        return;
-      }
-      // Validate file type
-      const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword'];
-      if (!allowedTypes.includes(file.type)) {
-        toast.error('Only PDF, JPG, PNG, and DOC files are allowed');
-        return;
-      }
-      setBidData(prev => ({ ...prev, certFile: file }));
-      setCertFileName(file.name);
-    }
-  };
+    if (!file) return;
 
-  const isComplete = bidData.price && bidData.price > 0 && bidData.availability && bidData.termsConfirmed;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File size must be less than 5MB');
+      return;
+    }
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword',
+                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (!allowed.includes(file.type)) {
+      toast.error('Only PDF, JPG, PNG, and DOC files are allowed');
+      return;
+    }
+
+    setBidData(prev => ({ ...prev, certFile: file }));
+    setCertFileName(file.name);
+  };
 
   const handleSaveDraft = async () => {
     setSaving(true);
     try {
-      await onSaveDraft(bidData);
+      await onSaveDraft({
+        ...bidData,
+        price:        bidData.price ?? 0,           // never send null to FormData
+        availability: bidData.availability || 'immediate',
+      });
       toast.success('Bid saved as draft');
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to save draft');
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to save draft');
     } finally {
       setSaving(false);
     }
@@ -192,96 +191,99 @@ export function BidResponseModal({
 
   const handleSubmit = async () => {
     if (!isComplete) {
-      toast.error('Please complete all required fields');
+      toast.error('Please complete all required fields and confirm terms');
       return;
     }
-
+    setSubmitting(true);
     try {
       await onSubmit(bidData);
       toast.success('Bid submitted successfully to the buyer!');
       onClose();
     } catch (err: any) {
-      toast.error(err?.message || 'Failed to submit bid');
+      toast.error(err?.response?.data?.error || err?.message || 'Failed to submit bid');
+    } finally {
+      setSubmitting(false);
     }
   };
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+
+  if (!rfq) return null;
+
+  const formattedDeadline = rfq.deadline
+    ? new Date(rfq.deadline).toLocaleDateString('en-GB', {
+        day: '2-digit', month: 'short', year: 'numeric',
+      })
+    : null;
 
   return (
     <Dialog open={open} onOpenChange={(newOpen) => !newOpen && onClose()}>
       <DialogContent className={cn(
-        "overflow-y-auto",
-        step === 'accept' ? "sm:max-w-lg max-h-[90vh]" : "sm:max-w-2xl max-h-[90vh]"
+        'overflow-y-auto',
+        step === 'accept' ? 'sm:max-w-lg max-h-[90vh]' : 'sm:max-w-2xl max-h-[90vh]',
       )}>
         <DialogHeader>
           <DialogTitle>
             {step === 'accept' ? 'Accept RFQ Invitation' : 'Submit Bid'}
-            {rfq && (
-              <p className="text-sm text-gray-500 font-normal mt-1">
-                RFQ-{String(rfq.id).padStart(4, '0')} • {rfq.equipmentName}
-              </p>
-            )}
+            <p className="text-sm text-gray-500 font-normal mt-1">
+              RFQ-{String(rfq.id).padStart(4, '0')} • {rfq.equipmentName}
+            </p>
           </DialogTitle>
         </DialogHeader>
 
-        {rfq && step === 'accept' && (
+        {/* ── STEP 1: Accept ── */}
+        {step === 'accept' && (
           <div className="space-y-6">
             {/* RFQ Details Card */}
-            <div className="space-y-4">
-              <div className="p-4 bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg space-y-3">
+            <div className="p-4 bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg space-y-3">
+              <div>
+                <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Equipment</p>
+                <p className="text-lg font-bold text-gray-900 mt-1">{rfq.equipmentName}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Equipment</p>
-                  <p className="text-lg font-bold text-gray-900 mt-1">{rfq.equipmentName}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Buyer</p>
-                    <p className="font-semibold text-gray-900 mt-1">{rfq.clientName}</p>
-                    {rfq.clientEmail && (
-                      <p className="text-xs text-gray-600 mt-0.5">{rfq.clientEmail}</p>
-                    )}
-                  </div>
-                  {rfq.deadline && (
-                    <div>
-                      <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Deadline</p>
-                      <p className="font-semibold text-gray-900 mt-1">
-                        {new Date(rfq.deadline).toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                      </p>
-                    </div>
+                  <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Buyer</p>
+                  <p className="font-semibold text-gray-900 mt-1">{rfq.clientName}</p>
+                  {rfq.clientEmail && (
+                    <p className="text-xs text-gray-600 mt-0.5">{rfq.clientEmail}</p>
                   )}
                 </div>
-              </div>
-
-              {/* Instructions */}
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-900">
-                  Click <span className="font-semibold">"Accept"</span> to express your interest in bidding for this RFQ. 
-                  After accepting, you'll fill in your price, availability, and certification details.
-                </p>
+                {formattedDeadline && (
+                  <div>
+                    <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Deadline</p>
+                    <p className="font-semibold text-gray-900 mt-1">{formattedDeadline}</p>
+                  </div>
+                )}
               </div>
             </div>
 
+            {/* Instruction */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-900">
+                Click <span className="font-semibold">"Accept &amp; Continue"</span> to express your
+                interest in bidding for this RFQ. After accepting, you'll fill in your price,
+                availability, and certification details.
+              </p>
+            </div>
+
             <DialogFooter className="gap-2">
-              <Button variant="outline" onClick={onClose} disabled={acceptLoading}>
+              <Button variant="outline" onClick={onClose}>
                 Cancel
               </Button>
               <Button
                 onClick={handleAccept}
-                disabled={acceptLoading}
                 className="bg-green-600 hover:bg-green-700 text-white gap-2"
               >
-                {acceptLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-                Accept & Continue
+                Accept &amp; Continue
               </Button>
             </DialogFooter>
           </div>
         )}
 
-        {rfq && step === 'bid' && (
+        {/* ── STEP 2: Bid Form ── */}
+        {step === 'bid' && (
           <div className="space-y-4">
-            {/* Back Button */}
+            {/* Back */}
             <button
               onClick={() => setStep('accept')}
               className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 transition-colors"
@@ -291,14 +293,16 @@ export function BidResponseModal({
             </button>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
               {/* Left: Checklist */}
               <div className="md:col-span-1">
                 <CompletenessChecklist bidData={bidData} />
               </div>
 
-              {/* Right: Bid Form */}
+              {/* Right: Form */}
               <div className="md:col-span-2 space-y-4">
-                {/* RFQ Info */}
+
+                {/* RFQ recap */}
                 <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-1.5">
                   <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">RFQ Details</p>
                   <div className="grid grid-cols-2 gap-3 text-sm">
@@ -306,16 +310,10 @@ export function BidResponseModal({
                       <p className="text-xs text-indigo-600 font-medium">Buyer</p>
                       <p className="font-semibold text-gray-900">{rfq.clientName}</p>
                     </div>
-                    {rfq.deadline && (
+                    {formattedDeadline && (
                       <div>
                         <p className="text-xs text-indigo-600 font-medium">Deadline</p>
-                        <p className="font-semibold text-gray-900">
-                          {new Date(rfq.deadline).toLocaleDateString('en-GB', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </p>
+                        <p className="font-semibold text-gray-900">{formattedDeadline}</p>
                       </div>
                     )}
                   </div>
@@ -361,12 +359,13 @@ export function BidResponseModal({
                   </Select>
                 </div>
 
-                {/* Certification */}
+                {/* Certification upload */}
                 <div>
                   <Label htmlFor="cert" className="text-sm font-semibold text-gray-700">
                     Certification Document
                   </Label>
-                  <div className="mt-1.5 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition-colors cursor-pointer"
+                  <div
+                    className="mt-1.5 border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-500 transition-colors cursor-pointer"
                     onClick={() => document.getElementById('cert-input')?.click()}
                   >
                     <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
@@ -377,7 +376,7 @@ export function BidResponseModal({
                       </div>
                     ) : (
                       <div>
-                        <p className="text-sm font-semibold text-gray-700">Drag & drop or click to upload</p>
+                        <p className="text-sm font-semibold text-gray-700">Drag &amp; drop or click to upload</p>
                         <p className="text-xs text-gray-500 mt-1">PDF, JPG, PNG, DOC (max 5MB)</p>
                       </div>
                     )}
@@ -397,35 +396,44 @@ export function BidResponseModal({
                     type="checkbox"
                     id="terms"
                     checked={bidData.termsConfirmed}
-                    onChange={(e) => setBidData(prev => ({ ...prev, termsConfirmed: e.target.checked }))}
+                    onChange={(e) =>
+                      setBidData(prev => ({ ...prev, termsConfirmed: e.target.checked }))
+                    }
                     className="mt-0.5 w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                   />
                   <label htmlFor="terms" className="text-sm text-gray-700">
-                    I confirm this bid is valid for <span className="font-semibold">30 days</span> and accept the standard terms and conditions.
+                    I confirm this bid is valid for{' '}
+                    <span className="font-semibold">30 days</span> and accept the standard terms and
+                    conditions.
                     <span className="text-red-500 ml-0.5">*</span>
                   </label>
                 </div>
               </div>
             </div>
 
+            {/* Footer */}
             <DialogFooter className="gap-2 pt-4">
-              <Button variant="outline" onClick={onClose} disabled={isLoading || saving}>
+              <Button
+                variant="outline"
+                onClick={onClose}
+                disabled={submitting || saving}
+              >
                 Cancel
               </Button>
               <Button
                 variant="secondary"
                 onClick={handleSaveDraft}
-                disabled={isLoading || saving}
+                disabled={submitting || saving}
               >
                 {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Save Draft
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={!isComplete || isLoading || saving}
+                disabled={!isComplete || submitting || saving}
                 className="bg-indigo-600 hover:bg-indigo-700 text-white"
               >
-                {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 Submit Bid to Buyer
               </Button>
             </DialogFooter>

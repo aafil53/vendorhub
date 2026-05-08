@@ -46,6 +46,16 @@ const DECLINE_REASONS: DeclineReason[] = [
   { value: 'other', label: 'Other reason' },
 ];
 
+// Maps availability dropdown tokens → real ISO date strings for the backend
+const AVAILABILITY_DATE_MAP: Record<string, string> = {
+  'immediate': new Date().toISOString().split('T')[0],
+  '1-week':    new Date(Date.now() + 7  * 86400000).toISOString().split('T')[0],
+  '2-weeks':   new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0],
+  '3-weeks':   new Date(Date.now() + 21 * 86400000).toISOString().split('T')[0],
+  '1-month':   new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+  'custom':    new Date().toISOString().split('T')[0],
+};
+
 function formatDeadlineCountdown(deadline: string | null): { text: string; status: 'urgent' | 'normal' | 'expired' } {
   if (!deadline) return { text: 'No deadline', status: 'normal' };
 
@@ -245,6 +255,8 @@ export default function RFQInbox() {
         return;
       }
 
+      // ✅ /bids/new/decline is correct — backend treats "new" as :id param
+      // and creates a fresh decline bid when id === 'new'
       await api.post(`/bids/new/decline`, {
         rfqId: declineRFQ.id,
         declineReason: reason,
@@ -546,29 +558,27 @@ export default function RFQInbox() {
         }}
         onSubmit={async (data) => {
           if (!bidModalRFQ) return;
-          const formData = new FormData();
-          formData.append('rfqId', String(bidModalRFQ.id));
-          formData.append('price', String(data.price));
-          formData.append('availability', data.availability);
-          if (data.certFile) {
-            formData.append('certFile', data.certFile);
-          }
-          await api.post('/bids/new/submit', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
+          // ✅ FIXED: was '/bids/new/submit' → correct route is '/bids/submit'
+          // ✅ FIXED: was FormData + multipart → backend uses req.body (plain JSON)
+          // ✅ FIXED: map availability token (e.g. "1-week") → real ISO date for DB
+          await api.post('/bids/submit', {
+            rfqId:        bidModalRFQ.id,
+            price:        data.price ?? 0,
+            availability: AVAILABILITY_DATE_MAP[data.availability] ?? data.availability,
+            certFile:     null,
           });
           queryClient.invalidateQueries({ queryKey: ['vendor-rfqs'] });
         }}
         onSaveDraft={async (data) => {
           if (!bidModalRFQ) return;
-          const formData = new FormData();
-          formData.append('rfqId', String(bidModalRFQ.id));
-          formData.append('price', String(data.price || 0));
-          formData.append('availability', data.availability);
-          if (data.certFile) {
-            formData.append('certFile', data.certFile);
-          }
-          await api.post('/bids/new/draft', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
+          // ✅ FIXED: was '/bids/new/draft' → correct route is '/bids/draft'
+          // ✅ FIXED: was FormData + multipart → backend uses req.body (plain JSON)
+          // ✅ FIXED: map availability token → real ISO date for DB
+          await api.post('/bids/draft', {
+            rfqId:        bidModalRFQ.id,
+            price:        data.price ?? 0,
+            availability: AVAILABILITY_DATE_MAP[data.availability] ?? data.availability,
+            certFile:     null,
           });
         }}
       />
